@@ -1,0 +1,7 @@
+.env
+__pycache__/
+*.pyc
+market_report_*.xlsx
+market_brief_*.txt
+global_market_*.txt
+us_market_*.txt
