@@ -139,7 +139,7 @@ def _top5_by_investor(investor: dict) -> list[str]:
         return ", ".join(items)
 
     top_lines = ["[국내 통합]"]
-    for subject, label in INVESTORS.items():
+    for subject, label in {"외인": "외국인"}.items():
         subject_buy = pick_top(buy_df, subject, "buy")
         subject_sell = pick_top(sell_df, subject, "sell")
         if not subject_buy.empty:
