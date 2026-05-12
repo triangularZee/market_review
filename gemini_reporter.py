@@ -25,11 +25,20 @@ GEMINI_API_KEY = os.environ.get("GOOGLE_AI_API_KEY", "")
 
 def build_prompt(context: str, region: str = "all") -> str:
     date_title = datetime.now().strftime("%y.%m.%d")
+    other_instruction = ""
+    if region == "other":
+        other_instruction = """
+그외 시장 리포트는 반드시 국가/지역별로 나누세요:
+[중국], [홍콩], [일본], [대만]
+각 국가/지역 아래에 주요 지수, 상승/하락 섹터, 거래대금, Daily Review를 2~4개 bullet로 압축하세요.
+중국은 상해와 심천 데이터를 함께 묶고, 홍콩/일본/대만은 각각 독립 섹션으로 유지하세요.
+"""
     return f"""당신은 텔레그램용 글로벌 시장 데일리 브리프를 쓰는 한국어 애널리스트입니다.
 아래 수집 데이터를 바탕으로 3,500자 이내의 매우 컴팩트한 메시지를 작성하세요.
 
 대상 범위: {region}
 기준일: {date_title}
+{other_instruction}
 
 수집 데이터:
 {context}
