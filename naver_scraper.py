@@ -137,6 +137,45 @@ def fetch_index_investor_flows() -> dict[str, pd.DataFrame]:
     return results
 
 
+def fetch_index_program_flows() -> dict[str, pd.DataFrame]:
+    """네이버 지수 페이지 투자정보에서 코스피/코스닥 프로그램 매매를 조회."""
+    markets = {
+        "2780_kospi": "KOSPI",
+        "2780_kosdaq": "KOSDAQ",
+    }
+    results = {}
+    for key, code in markets.items():
+        url = f"{NAVER_BASE}/securityFe/api/index/{code}/integration"
+        resp = requests.get(
+            url,
+            headers={
+                **NAVER_HEADERS,
+                "Referer": f"https://stock.naver.com/domestic/index/{code}/price",
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        trend = data.get("programTrendInfo") or {}
+        if not trend:
+            results[key] = pd.DataFrame()
+            continue
+
+        results[key] = pd.DataFrame(
+            [
+                {
+                    "일자": trend.get("bizdate", ""),
+                    "차익_순매수": _parse_eok_to_won(trend.get("indexDifferenceReal")),
+                    "비차익_순매수": _parse_eok_to_won(trend.get("indexBiDifferenceReal")),
+                    "전체_순매수": _parse_eok_to_won(trend.get("indexTotalReal")),
+                    "단위": "원",
+                    "출처": "네이버 투자정보",
+                }
+            ]
+        )
+    return results
+
+
 def _parse_number(value) -> int:
     text = str(value or "").replace(",", "").strip()
     if not text:

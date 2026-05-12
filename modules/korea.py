@@ -8,6 +8,7 @@ from naver_scraper import (
     fetch_exchange_rates,
     fetch_global_indicators,
     fetch_index_investor_flows,
+    fetch_index_program_flows,
     fetch_naver_investor_top_stocks,
     fetch_sector_top10,
 )
@@ -31,6 +32,14 @@ def _has_investor_top_stocks(investor: dict) -> bool:
         "0795_kosdaq_buy",
         "0795_kosdaq_sell",
     ]:
+        value = investor.get(key)
+        if isinstance(value, pd.DataFrame) and not value.empty:
+            return True
+    return False
+
+
+def _has_program_flow(investor: dict) -> bool:
+    for key in ["2780_kospi", "2780_kosdaq"]:
         value = investor.get(key)
         if isinstance(value, pd.DataFrame) and not value.empty:
             return True
@@ -61,6 +70,17 @@ def _apply_naver_investor_fallback(data: dict) -> None:
                 fallback_sources.append("네이버 금융 투자자별 매매상위")
         except Exception as exc:
             data["investor_top_fallback_error"] = str(exc)
+
+    if not _has_program_flow(investor):
+        try:
+            fallback = fetch_index_program_flows()
+            for key, value in fallback.items():
+                if isinstance(value, pd.DataFrame) and not value.empty:
+                    investor[key] = value
+            if _has_program_flow(investor):
+                fallback_sources.append("네이버 프로그램 매매")
+        except Exception as exc:
+            data["program_fallback_error"] = str(exc)
 
     if fallback_sources:
         data["investor_fallback"] = ", ".join(fallback_sources)
@@ -110,6 +130,27 @@ def _latest_market_flow(investor: dict) -> list[str]:
         )
 
     return lines
+
+
+def _latest_program_flow(investor: dict) -> list[str]:
+    lines = ["\n<korea_program_flow_by_market>"]
+    market_map = {
+        "코스피 프로그램": "2780_kospi",
+        "코스닥 프로그램": "2780_kosdaq",
+    }
+    has_data = False
+    for market, key in market_map.items():
+        df = investor.get(key)
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            continue
+        row = df.iloc[0]
+        lines.append(
+            f"- {market}: 차익 {_fmt_krw(row.get('차익_순매수'))}, "
+            f"비차익 {_fmt_krw(row.get('비차익_순매수'))}, "
+            f"전체 {_fmt_krw(row.get('전체_순매수'))}"
+        )
+        has_data = True
+    return lines if has_data else []
 
 
 def _top5_by_investor(investor: dict) -> list[str]:
@@ -213,6 +254,7 @@ def summarize_for_prompt(data: dict, max_rows: int = 12) -> str:
     investor = data.get("investor") or {}
     if investor:
         lines.extend(_latest_market_flow(investor))
+        lines.extend(_latest_program_flow(investor))
         lines.extend(_top5_by_investor(investor))
 
     for key, value in investor.items():
@@ -246,5 +288,7 @@ def summarize_for_prompt(data: dict, max_rows: int = 12) -> str:
         lines.append(f"\n<investor_fallback_error> {data['investor_fallback_error']}")
     if data.get("investor_top_fallback_error"):
         lines.append(f"\n<investor_top_fallback_error> {data['investor_top_fallback_error']}")
+    if data.get("program_fallback_error"):
+        lines.append(f"\n<program_fallback_error> {data['program_fallback_error']}")
 
     return "\n".join(lines)
