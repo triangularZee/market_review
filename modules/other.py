@@ -75,7 +75,7 @@ def summarize_for_prompt(data: dict, max_rows: int = 18) -> str:
             df = markets.get(market)
             if isinstance(df, pd.DataFrame) and not df.empty:
                 cols = [
-                    col for col in ["종목명", "심볼", "등락률", "거래대금", "거래대금(TWD)", "업종", "등락"]
+                    col for col in ["종목명", "심볼", "등락률", "업종", "등락"]
                     if col in df.columns
                 ]
                 compact = df[cols] if cols else df
