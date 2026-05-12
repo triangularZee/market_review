@@ -146,8 +146,7 @@ def _latest_program_flow(investor: dict) -> list[str]:
         row = df.iloc[0]
         lines.append(
             f"- {market}: 차익 {_fmt_krw(row.get('차익_순매수'))}, "
-            f"비차익 {_fmt_krw(row.get('비차익_순매수'))}, "
-            f"전체 {_fmt_krw(row.get('전체_순매수'))}"
+            f"비차익 {_fmt_krw(row.get('비차익_순매수'))}"
         )
         has_data = True
     return lines if has_data else []
@@ -259,7 +258,10 @@ def summarize_for_prompt(data: dict, max_rows: int = 12) -> str:
 
     for key, value in investor.items():
         if isinstance(value, pd.DataFrame) and not value.empty:
-            lines.append(f"\n<investor:{key}>\n{value.head(5).to_string(index=False)}")
+            compact = value
+            if key.startswith("2780_"):
+                compact = value.drop(columns=["전체_순매수"], errors="ignore")
+            lines.append(f"\n<investor:{key}>\n{compact.head(5).to_string(index=False)}")
 
     news = data.get("news") or {}
     for section in ["naver_market", "naver_world", "naver_stock"]:
