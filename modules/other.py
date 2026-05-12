@@ -136,6 +136,10 @@ def _top_value_line(frames: list[pd.DataFrame], count: int = 10) -> str:
     return ", ".join(items)
 
 
+def _market_top_value_line(df: pd.DataFrame, count: int = 10) -> str:
+    return _top_value_line([df], count)
+
+
 def _country_index_line(country: str, indicators: pd.DataFrame, taiex: dict | None = None) -> str:
     if country == "대만" and taiex:
         value = _format_level(taiex.get("value", ""))
@@ -220,9 +224,19 @@ def summarize_for_prompt(data: dict, max_rows: int = 18) -> str:
         if index_line:
             lines.append(f"\n<country_indices:{country}>\n{index_line}")
 
-        top_value = _top_value_line(country_frames, 10)
-        if top_value:
-            lines.append(f"\n<top_value_stocks:{country}>\n- 거래대금 TOP10: {top_value}")
+        if country == "중국":
+            top_value_lines = []
+            for market in market_names:
+                top_value = _market_top_value_line(markets.get(market), 10)
+                if top_value:
+                    label = "상해" if "상해" in market else "심천"
+                    top_value_lines.append(f"- {label} 거래대금 TOP10: {top_value}")
+            if top_value_lines:
+                lines.append(f"\n<top_value_stocks:{country}>\n" + "\n".join(top_value_lines))
+        else:
+            top_value = _top_value_line(country_frames, 10)
+            if top_value:
+                lines.append(f"\n<top_value_stocks:{country}>\n- 거래대금 TOP10: {top_value}")
 
         for topic in COUNTRY_NEWS.get(country, []):
             articles = topics.get(topic) or []
