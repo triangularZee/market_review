@@ -16,7 +16,7 @@ GLOBAL_INDICATOR_CODES = [
     # 미국
     ".INX", ".IXIC", ".DJI",
     # 아시아
-    ".N225", ".HSI", ".SSEC",
+    ".N225", ".HSI", ".SSEC", ".SZSC", ".CSI300",
     # 유럽
     ".STOXX50E", ".GDAXI", ".FTSE",
     # 국내

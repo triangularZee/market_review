@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd
 
 from global_market_analyzer import fetch_market_top_stocks
+from modules.formatting import format_prompt_dataframe
 from naver_scraper import fetch_global_indicators
 from us_market_analyzer import fetch_us_etf_top
 
@@ -28,7 +29,7 @@ def _format_change(value) -> str:
     try:
         number = float(value)
     except Exception:
-        text = str(value or "").strip()
+        text = "" if value is None else str(value).strip()
         return text if text else "N/A"
     sign = "+" if number > 0 else ""
     return f"{sign}{number:.2f}%"
@@ -89,6 +90,7 @@ def summarize_for_prompt(data: dict, max_rows: int = 18) -> str:
         if isinstance(value, pd.DataFrame) and not value.empty:
             cols = [col for col in column_map[key] if col in value.columns]
             compact = value[cols] if cols else value
+            compact = format_prompt_dataframe(compact)
             lines.append(f"\n<{key}>\n{compact.head(max_rows).to_string(index=False)}")
 
     top_value = _top_value_line(data.get("stock_all"), 10)

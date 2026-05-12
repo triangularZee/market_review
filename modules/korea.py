@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from modules.formatting import format_prompt_dataframe
 from naver_scraper import (
     fetch_exchange_rates,
     fetch_global_indicators,
@@ -248,6 +249,7 @@ def summarize_for_prompt(data: dict, max_rows: int = 12) -> str:
         if isinstance(value, pd.DataFrame) and not value.empty:
             cols = [col for col in column_map[key] if col in value.columns]
             compact = value[cols] if cols else value
+            compact = format_prompt_dataframe(compact)
             lines.append(f"\n<{key}>\n{compact.head(max_rows).to_string(index=False)}")
 
     investor = data.get("investor") or {}
@@ -261,6 +263,7 @@ def summarize_for_prompt(data: dict, max_rows: int = 12) -> str:
             compact = value
             if key.startswith("2780_"):
                 compact = value.drop(columns=["전체_순매수"], errors="ignore")
+            compact = format_prompt_dataframe(compact)
             lines.append(f"\n<investor:{key}>\n{compact.head(5).to_string(index=False)}")
 
     news = data.get("news") or {}

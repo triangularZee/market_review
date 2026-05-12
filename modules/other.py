@@ -6,6 +6,7 @@ import pandas as pd
 
 from global_market_analyzer import fetch_all_global_markets
 from naver_scraper import fetch_global_indicators
+from modules.formatting import format_index_item, format_prompt_dataframe
 
 
 OTHER_NEWS_TOPICS = {
@@ -30,6 +31,13 @@ COUNTRY_NEWS = {
     "홍콩": ["hongkong_market", "china_policy", "supply_chain"],
     "일본": ["japan_market", "supply_chain", "commodities_fx"],
     "대만": ["taiwan_market", "supply_chain", "commodities_fx"],
+}
+
+COUNTRY_INDEX_KEYWORDS = {
+    "중국": ["상해", "심천", "CSI"],
+    "홍콩": ["항셍"],
+    "일본": ["니케이"],
+    "대만": ["TAIEX"],
 }
 
 
@@ -68,7 +76,7 @@ def _to_numeric(value) -> float:
 
 
 def _format_change(value, close=None, is_rate: bool = True) -> str:
-    text = str(value or "").strip()
+    text = "" if value is None else str(value).strip()
     if not text:
         return "N/A"
     if "%" in text:
@@ -87,6 +95,13 @@ def _format_change(value, close=None, is_rate: bool = True) -> str:
     sign = "+" if number > 0 else ""
     suffix = "%" if is_rate else ""
     return f"{sign}{number:.2f}{suffix}"
+
+
+def _format_level(value) -> str:
+    number = _to_numeric(value)
+    if pd.isna(number):
+        return "" if value is None else str(value).strip()
+    return f"{number:,.2f}"
 
 
 def _top_value_line(frames: list[pd.DataFrame], count: int = 10) -> str:
@@ -121,6 +136,27 @@ def _top_value_line(frames: list[pd.DataFrame], count: int = 10) -> str:
     return ", ".join(items)
 
 
+def _country_index_line(country: str, indicators: pd.DataFrame, taiex: dict | None = None) -> str:
+    if country == "대만" and taiex:
+        value = _format_level(taiex.get("value", ""))
+        pct = _format_change(taiex.get("change_pct", ""))
+        return f"- 주요 지수: TAIEX {pct}({value})"
+    if not isinstance(indicators, pd.DataFrame) or indicators.empty:
+        return ""
+    keywords = COUNTRY_INDEX_KEYWORDS.get(country, [])
+    if not keywords:
+        return ""
+    rows = []
+    for _, row in indicators.iterrows():
+        name = str(row.get("종목명", ""))
+        code = str(row.get("코드", ""))
+        if any(keyword in name or keyword in code for keyword in keywords):
+            rows.append(format_index_item(row))
+    if not rows:
+        return ""
+    return f"- 주요 지수: {' | '.join(rows)}"
+
+
 def _collect_news() -> dict:
     from news_scraper import fetch_all_topic_news, generate_news_context
 
@@ -151,6 +187,7 @@ def summarize_for_prompt(data: dict, max_rows: int = 18) -> str:
     if isinstance(indicators, pd.DataFrame) and not indicators.empty:
         cols = [col for col in ["종목명", "현재가", "전일대비", "등락률(%)", "분류"] if col in indicators.columns]
         compact = indicators[cols] if cols else indicators
+        compact = format_prompt_dataframe(compact)
         lines.append(f"\n<global_indicators>\n{compact.head(max_rows).to_string(index=False)}")
 
     markets = data.get("markets") or {}
@@ -160,6 +197,7 @@ def summarize_for_prompt(data: dict, max_rows: int = 18) -> str:
     for country, market_names in COUNTRY_MARKETS.items():
         lines.append(f"\n[{country}]")
         country_frames = []
+        country_taiex = None
         for market in market_names:
             df = markets.get(market)
             if isinstance(df, pd.DataFrame) and not df.empty:
@@ -169,12 +207,18 @@ def summarize_for_prompt(data: dict, max_rows: int = 18) -> str:
                     if col in df.columns
                 ]
                 compact = df[cols] if cols else df
+                compact = format_prompt_dataframe(compact)
                 lines.append(f"\n<market:{market}>\n{compact.head(max_rows).to_string(index=False)}")
                 taiex = getattr(df, "attrs", {}).get("taiex")
                 if taiex:
+                    country_taiex = taiex
                     lines.append(f"<taiex>{taiex}")
             else:
                 lines.append(f"\n<market:{market}> 데이터 없음")
+
+        index_line = _country_index_line(country, indicators, country_taiex)
+        if index_line:
+            lines.append(f"\n<country_indices:{country}>\n{index_line}")
 
         top_value = _top_value_line(country_frames, 10)
         if top_value:
