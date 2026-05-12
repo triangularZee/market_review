@@ -8,6 +8,7 @@ from naver_scraper import (
     fetch_exchange_rates,
     fetch_global_indicators,
     fetch_index_investor_flows,
+    fetch_naver_investor_top_stocks,
     fetch_sector_top10,
 )
 
@@ -23,19 +24,46 @@ def _has_market_flow(investor: dict) -> bool:
     return False
 
 
+def _has_investor_top_stocks(investor: dict) -> bool:
+    for key in [
+        "0795_kospi_buy",
+        "0795_kospi_sell",
+        "0795_kosdaq_buy",
+        "0795_kosdaq_sell",
+    ]:
+        value = investor.get(key)
+        if isinstance(value, pd.DataFrame) and not value.empty:
+            return True
+    return False
+
+
 def _apply_naver_investor_fallback(data: dict) -> None:
     investor = data.setdefault("investor", {})
-    if _has_market_flow(investor):
-        return
-    try:
-        fallback = fetch_index_investor_flows()
-        for key, value in fallback.items():
-            if isinstance(value, pd.DataFrame) and not value.empty:
-                investor[key] = value
-        if _has_market_flow(investor):
-            data["investor_fallback"] = "네이버 지수 투자정보"
-    except Exception as exc:
-        data["investor_fallback_error"] = str(exc)
+    fallback_sources = []
+    if not _has_market_flow(investor):
+        try:
+            fallback = fetch_index_investor_flows()
+            for key, value in fallback.items():
+                if isinstance(value, pd.DataFrame) and not value.empty:
+                    investor[key] = value
+            if _has_market_flow(investor):
+                fallback_sources.append("네이버 지수 투자정보")
+        except Exception as exc:
+            data["investor_fallback_error"] = str(exc)
+
+    if not _has_investor_top_stocks(investor):
+        try:
+            fallback = fetch_naver_investor_top_stocks(top_n=5)
+            for key, value in fallback.items():
+                if isinstance(value, pd.DataFrame) and not value.empty:
+                    investor[key] = value
+            if _has_investor_top_stocks(investor):
+                fallback_sources.append("네이버 금융 투자자별 매매상위")
+        except Exception as exc:
+            data["investor_top_fallback_error"] = str(exc)
+
+    if fallback_sources:
+        data["investor_fallback"] = ", ".join(fallback_sources)
 
 
 def _fmt_krw(value) -> str:
@@ -83,14 +111,14 @@ def _top3_by_investor(investor: dict) -> list[str]:
         market_lines = [f"[{market}]"]
         for subject, label in INVESTORS.items():
             subject_buy = (
-                buy_df[buy_df["투자자"] == subject].head(3)
+                buy_df[buy_df["투자자"] == subject].head(5)
                 if isinstance(buy_df, pd.DataFrame)
                 and not buy_df.empty
                 and "투자자" in buy_df.columns
                 else pd.DataFrame()
             )
             subject_sell = (
-                sell_df[sell_df["투자자"] == subject].head(3)
+                sell_df[sell_df["투자자"] == subject].head(5)
                 if isinstance(sell_df, pd.DataFrame)
                 and not sell_df.empty
                 and "투자자" in sell_df.columns
@@ -98,19 +126,23 @@ def _top3_by_investor(investor: dict) -> list[str]:
             )
 
             def fmt_rows(df: pd.DataFrame) -> str:
-                return ", ".join(
-                    f"{r.get('종목명')}({_fmt_krw(r.get('순매수금액'))}, {r.get('등락률')}%)"
-                    for _, r in df.iterrows()
-                )
+                items = []
+                for _, r in df.iterrows():
+                    change = str(r.get("등락률", "") or "").strip()
+                    change_suffix = f", {change}%" if change else ""
+                    items.append(
+                        f"{r.get('종목명')}({_fmt_krw(r.get('순매수금액'))}{change_suffix})"
+                    )
+                return ", ".join(items)
 
             if not subject_buy.empty:
-                market_lines.append(f"- {label} 순매수 TOP3: {fmt_rows(subject_buy)}")
+                market_lines.append(f"- {label} 순매수 TOP5: {fmt_rows(subject_buy)}")
             if not subject_sell.empty:
-                market_lines.append(f"- {label} 순매도 TOP3: {fmt_rows(subject_sell)}")
+                market_lines.append(f"- {label} 순매도 TOP5: {fmt_rows(subject_sell)}")
 
         if len(market_lines) > 1:
             if not lines:
-                lines.append("\n<korea_investor_top3_by_subject>")
+                lines.append("\n<korea_investor_top5_by_subject>")
             lines.extend(market_lines)
     return lines
 
@@ -193,5 +225,7 @@ def summarize_for_prompt(data: dict, max_rows: int = 12) -> str:
         lines.append(f"\n<investor_fallback> {data['investor_fallback']}")
     if data.get("investor_fallback_error"):
         lines.append(f"\n<investor_fallback_error> {data['investor_fallback_error']}")
+    if data.get("investor_top_fallback_error"):
+        lines.append(f"\n<investor_top_fallback_error> {data['investor_top_fallback_error']}")
 
     return "\n".join(lines)

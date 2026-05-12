@@ -6,6 +6,7 @@
 
 import requests
 import pandas as pd
+from bs4 import BeautifulSoup
 from config import NAVER_BASE, NAVER_HEADERS, GLOBAL_INDICATOR_CODES
 
 
@@ -130,6 +131,86 @@ def fetch_index_investor_flows() -> dict[str, pd.DataFrame]:
                 }
             ]
         )
+    return results
+
+
+def _parse_number(value) -> int:
+    text = str(value or "").replace(",", "").strip()
+    if not text:
+        return 0
+    return int(float(text))
+
+
+def fetch_naver_investor_top_stocks(top_n: int = 5) -> dict[str, pd.DataFrame]:
+    """구형 네이버 금융 iframe에서 투자자별 순매수/순매도 상위 종목 조회."""
+    investors = {
+        "개인": "8000",
+        "외인": "9000",
+        "기관": "1000",
+    }
+    markets = {
+        "kospi": "01",
+        "kosdaq": "02",
+    }
+    sides = {
+        "buy": "순매수",
+        "sell": "순매도",
+    }
+    results: dict[str, pd.DataFrame] = {}
+    headers = {
+        **NAVER_HEADERS,
+        "Referer": "https://finance.naver.com/sise/sise_deal_rank.naver",
+    }
+
+    for market_key, sosok in markets.items():
+        side_rows = {"buy": [], "sell": []}
+        for side_key, side_name in sides.items():
+            for investor_name, investor_code in investors.items():
+                url = "https://finance.naver.com/sise/sise_deal_rank_iframe.naver"
+                params = {
+                    "sosok": sosok,
+                    "investor_gubun": investor_code,
+                    "type": side_key,
+                }
+                resp = requests.get(url, params=params, headers=headers, timeout=10)
+                resp.raise_for_status()
+                resp.encoding = "cp949"
+                soup = BeautifulSoup(resp.text, "html.parser")
+                table = soup.find("table")
+                rank = 0
+                if table is None:
+                    continue
+                for tr in table.find_all("tr"):
+                    cells = [c.get_text(" ", strip=True) for c in tr.find_all("td")]
+                    if len(cells) < 4 or not cells[0]:
+                        continue
+                    link = tr.find("a", href=True)
+                    code = ""
+                    if link and "code=" in link["href"]:
+                        code = link["href"].split("code=", 1)[1].split("&", 1)[0]
+                    rank += 1
+                    amount_won = _parse_number(cells[2]) * 1_000_000
+                    side_rows[side_key].append(
+                        {
+                            "투자자": investor_name,
+                            "매매구분": side_name,
+                            "순위": rank,
+                            "종목명": cells[0],
+                            "종목코드": code,
+                            "현재가": 0,
+                            "등락률": "",
+                            "순매수금액": amount_won,
+                            "수량": _parse_number(cells[1]) * 1_000,
+                            "당일거래량": _parse_number(cells[3]),
+                            "출처": "네이버 금융",
+                        }
+                    )
+                    if rank >= top_n:
+                        break
+
+        results[f"0795_{market_key}_buy"] = pd.DataFrame(side_rows["buy"])
+        results[f"0795_{market_key}_sell"] = pd.DataFrame(side_rows["sell"])
+
     return results
 
 
