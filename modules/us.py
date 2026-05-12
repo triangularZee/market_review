@@ -125,9 +125,18 @@ def summarize_for_prompt(data: dict, max_rows: int = 18) -> str:
             }.get(key, key)
             lines.append(f"\n<{label}>\n{compact.head(max_rows).to_string(index=False)}")
 
-    top_value = _top_value_line(data.get("stock_all"), 10)
-    if top_value:
-        lines.append(f"\n<top_value_stocks:US>\n- 거래대금 TOP10: {top_value}")
+    top_value_sections = [
+        ("NASDAQ", _top_value_line(data.get("stock_nasdaq"), 10)),
+        ("NYSE", _top_value_line(data.get("stock_nyse"), 10)),
+        ("ETF", _top_value_line(data.get("etf"), 10)),
+    ]
+    top_value_lines = [
+        f"- {label} 거래대금 TOP10: {value}"
+        for label, value in top_value_sections
+        if value
+    ]
+    if top_value_lines:
+        lines.append("\n<top_value_stocks:US>\n" + "\n".join(top_value_lines))
 
     news = data.get("news") or {}
     for topic, articles in list((news.get("topics") or {}).items())[:8]:
