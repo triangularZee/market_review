@@ -119,7 +119,7 @@ def get_net_buy_sell_stocks(
     except Exception:
         pass
 
-    investors = {"개인": "개인", "외인": "외국인합계", "기관": "기관합계"}
+    investors = {"개인": "개인", "외인": "외국인", "기관": "기관합계"}
 
     buy_rows = []
     sell_rows = []
