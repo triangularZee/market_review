@@ -99,11 +99,12 @@ def _parse_eok_to_won(value) -> int:
 def fetch_index_investor_flows() -> dict[str, pd.DataFrame]:
     """네이버 지수 페이지 투자정보에서 코스피/코스닥 투자자별 순매매를 조회."""
     markets = {
-        "0780_kospi": "KOSPI",
-        "0780_kosdaq": "KOSDAQ",
+        "0780_kospi": ("KOSPI", "원"),
+        "0780_kosdaq": ("KOSDAQ", "원"),
+        "0780_fut": ("FUT", "계약"),
     }
     results = {}
-    for key, code in markets.items():
+    for key, (code, unit) in markets.items():
         url = f"{NAVER_BASE}/securityFe/api/index/{code}/integration"
         resp = requests.get(
             url,
@@ -120,13 +121,15 @@ def fetch_index_investor_flows() -> dict[str, pd.DataFrame]:
             results[key] = pd.DataFrame()
             continue
 
+        parse_value = _parse_eok_to_won if unit == "원" else _parse_number
         results[key] = pd.DataFrame(
             [
                 {
                     "일자": trend.get("bizdate", ""),
-                    "개인_순매수": _parse_eok_to_won(trend.get("personalValue")),
-                    "외인_순매수": _parse_eok_to_won(trend.get("foreignValue")),
-                    "기관_순매수": _parse_eok_to_won(trend.get("institutionalValue")),
+                    "개인_순매수": parse_value(trend.get("personalValue")),
+                    "외인_순매수": parse_value(trend.get("foreignValue")),
+                    "기관_순매수": parse_value(trend.get("institutionalValue")),
+                    "단위": unit,
                     "출처": "네이버 투자정보",
                 }
             ]

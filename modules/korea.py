@@ -17,7 +17,7 @@ INVESTORS = {"개인": "개인", "기관": "기관", "외인": "외국인"}
 
 
 def _has_market_flow(investor: dict) -> bool:
-    for key in ["0780_kospi", "0780_kosdaq"]:
+    for key in ["0780_kospi", "0780_kosdaq", "0780_fut"]:
         value = investor.get(key)
         if isinstance(value, pd.DataFrame) and not value.empty:
             return True
@@ -78,11 +78,23 @@ def _fmt_krw(value) -> str:
     return f"{sign}{eok:,.0f}억원"
 
 
+def _fmt_flow_value(value, unit: str = "원") -> str:
+    if unit == "계약":
+        try:
+            value = float(value)
+        except Exception:
+            return "N/A"
+        sign = "+" if value > 0 else ""
+        return f"{sign}{value:,.0f}계약"
+    return _fmt_krw(value)
+
+
 def _latest_market_flow(investor: dict) -> list[str]:
     lines = ["\n<korea_investor_flow_by_market>"]
     market_map = {
         "코스피": "0780_kospi",
         "코스닥": "0780_kosdaq",
+        "선물": "0780_fut",
     }
     for market, key in market_map.items():
         df = investor.get(key)
@@ -90,10 +102,11 @@ def _latest_market_flow(investor: dict) -> list[str]:
             lines.append(f"- {market}: 데이터 없음")
             continue
         row = df.iloc[0]
+        unit = row.get("단위", "원")
         lines.append(
-            f"- {market}: 개인 {_fmt_krw(row.get('개인_순매수'))}, "
-            f"기관 {_fmt_krw(row.get('기관_순매수'))}, "
-            f"외국인 {_fmt_krw(row.get('외인_순매수'))}"
+            f"- {market}: 개인 {_fmt_flow_value(row.get('개인_순매수'), unit)}, "
+            f"기관 {_fmt_flow_value(row.get('기관_순매수'), unit)}, "
+            f"외국인 {_fmt_flow_value(row.get('외인_순매수'), unit)}"
         )
 
     return lines
