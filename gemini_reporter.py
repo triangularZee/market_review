@@ -25,6 +25,13 @@ GEMINI_API_KEY = os.environ.get("GOOGLE_AI_API_KEY", "")
 
 def build_prompt(context: str, region: str = "all") -> str:
     date_title = datetime.now().strftime("%y.%m.%d")
+    title_map = {
+        "korea": f"{date_title} 한국 마감시황",
+        "us": f"{date_title} 미국 마감시황",
+        "other": f"{date_title} 아시아 마감시황",
+        "all": f"{date_title} 글로벌 마감시황",
+    }
+    report_title = title_map.get(region, f"{date_title} 글로벌 마감시황")
     other_instruction = ""
     if region == "other":
         other_instruction = """
@@ -64,11 +71,11 @@ Daily Review는 매 bullet마다 문장 구조를 다르게 쓰세요. 지수 �
 
 출력 형식은 아래 포맷을 상황에 맞게 활용하세요.
 
-1) 글로벌 밸류체인 데일리
-{date_title} 글로벌 밸류체인 데일리
+{report_title}
 
 <한 줄 평>
 - 핵심 투자 함의 1문장
+- 보조 장세 해석 1문장
 
 주요 지수: 
 • 지수 등락률
@@ -92,6 +99,8 @@ Daily Review
 
 작성 규칙:
 - 텔레그램 메시지로 바로 보낼 수 있게 불필요한 표, 구분선, 출처 목록, 면책문구를 쓰지 마세요.
+- 첫 줄 제목은 반드시 "{report_title}"로 쓰세요.
+- <한 줄 평> 아래 문장은 모두 "- "로 시작하세요. bullet 없이 평문으로 쓰지 마세요.
 - 수치는 원자료에 있는 것만 쓰고 만들지 마세요.
 - 섹션별 업데이트가 없으면 그 섹션은 생략해도 됩니다.
 - "주요 지수:" 아래 설명은 반드시 "•" bullet 형식으로 쓰고, 한 bullet은 한 줄로 짧게 쓰세요.
