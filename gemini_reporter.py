@@ -47,6 +47,7 @@ def build_prompt(context: str, region: str = "all") -> str:
 거래대금은 시장 전체 합계가 원자료에 명확히 있을 때만 1줄로 쓰고, 없으면 생략하세요.
 Daily Review는 매 bullet마다 문장 구조를 다르게 쓰세요. 지수 방향, 섹터 확산/쏠림, 정책·매크로·환율·AI/반도체 모멘텀, 차익실현/방어주 흐름을 섞어 해석하세요.
 세 bullet 모두 "A와 B가 강세/약세" 식의 종목 나열로 반복하지 마세요.
+대만 기업명은 한자 원문 대신 영어명으로 쓰세요. 예: 台積電은 TSMC, 聯發科는 MediaTek, 聯電은 UMC.
 """
     us_instruction = ""
     if region == "us":

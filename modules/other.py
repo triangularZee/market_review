@@ -33,6 +33,36 @@ COUNTRY_NEWS = {
 }
 
 
+TAIWAN_ENGLISH_NAMES = {
+    "台積電": "TSMC",
+    "南亞科": "Nanya Technology",
+    "聯發科": "MediaTek",
+    "聯電": "UMC",
+    "華邦電": "Winbond",
+    "群創": "Innolux",
+    "台達電": "Delta Electronics",
+    "欣興": "Unimicron",
+    "國巨*": "Yageo",
+    "國巨": "Yageo",
+    "華通": "Compeq",
+    "鴻海": "Hon Hai",
+    "廣達": "Quanta Computer",
+    "緯穎": "Wiwynn",
+    "奇鋐": "Asia Vital Components",
+    "緯創": "Wistron",
+    "日月光投控": "ASE Technology",
+    "智邦": "Accton Technology",
+    "技嘉": "Gigabyte",
+    "世芯-KY": "Alchip",
+    "聯亞": "LandMark Optoelectronics",
+}
+
+
+def _display_name(name) -> str:
+    text = str(name or "").strip()
+    return TAIWAN_ENGLISH_NAMES.get(text, text)
+
+
 def _to_numeric(value) -> float:
     return pd.to_numeric(str(value).replace(",", ""), errors="coerce")
 
@@ -85,7 +115,7 @@ def _top_value_line(frames: list[pd.DataFrame], count: int = 10) -> str:
         change = _format_change(row["등락률"], row.get("종가"), bool(row.get("등락률여부", True)))
         if change == "N/A":
             continue
-        items.append(f"{row['종목명']}({change})")
+        items.append(f"{_display_name(row['종목명'])}({change})")
         if len(items) >= count:
             break
     return ", ".join(items)
