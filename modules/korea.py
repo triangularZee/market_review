@@ -68,14 +68,11 @@ def _latest_market_flow(investor: dict) -> list[str]:
             f"외국인 {_fmt_krw(row.get('외인_순매수'))}"
         )
 
-    # The copied public scraper does not yet collect these derivative flows.
-    for market in ["선물", "주식선물", "달러선물"]:
-        lines.append(f"- {market}: 데이터 없음")
     return lines
 
 
 def _top3_by_investor(investor: dict) -> list[str]:
-    lines = ["\n<korea_investor_top3_by_subject>"]
+    lines = []
     market_map = {
         "코스피": ("0795_kospi_buy", "0795_kospi_sell"),
         "코스닥": ("0795_kosdaq_buy", "0795_kosdaq_sell"),
@@ -83,7 +80,7 @@ def _top3_by_investor(investor: dict) -> list[str]:
     for market, (buy_key, sell_key) in market_map.items():
         buy_df = investor.get(buy_key, pd.DataFrame())
         sell_df = investor.get(sell_key, pd.DataFrame())
-        lines.append(f"[{market}]")
+        market_lines = [f"[{market}]"]
         for subject, label in INVESTORS.items():
             subject_buy = (
                 buy_df[buy_df["투자자"] == subject].head(3)
@@ -101,15 +98,20 @@ def _top3_by_investor(investor: dict) -> list[str]:
             )
 
             def fmt_rows(df: pd.DataFrame) -> str:
-                if df.empty:
-                    return "데이터 없음"
                 return ", ".join(
                     f"{r.get('종목명')}({_fmt_krw(r.get('순매수금액'))}, {r.get('등락률')}%)"
                     for _, r in df.iterrows()
                 )
 
-            lines.append(f"- {label} 순매수 TOP3: {fmt_rows(subject_buy)}")
-            lines.append(f"- {label} 순매도 TOP3: {fmt_rows(subject_sell)}")
+            if not subject_buy.empty:
+                market_lines.append(f"- {label} 순매수 TOP3: {fmt_rows(subject_buy)}")
+            if not subject_sell.empty:
+                market_lines.append(f"- {label} 순매도 TOP3: {fmt_rows(subject_sell)}")
+
+        if len(market_lines) > 1:
+            if not lines:
+                lines.append("\n<korea_investor_top3_by_subject>")
+            lines.extend(market_lines)
     return lines
 
 
