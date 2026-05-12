@@ -52,6 +52,10 @@ Daily Review는 매 bullet마다 문장 구조를 다르게 쓰세요. 지수 �
     us_instruction = ""
     if region == "us":
         us_instruction = """
+미국 리포트도 아시아 리포트처럼 큰 구조를 맞추세요:
+- 주요 지수에는 S&P 500, 나스닥, 다우, VIX를 우선 반영하세요.
+- 상승/하락 섹터, 거래대금 TOP10, Daily Review를 분리해 쓰세요.
+- Daily Review는 지수 방향, 섹터 확산/쏠림, 금리·달러·원자재·AI/반도체·실적/가이던스 중 중요한 보조 신호를 2~4개 bullet로 압축하세요.
 미국 리포트에는 상승/하락 섹터 바로 아래에 "거래대금 TOP10: 기업명(+/-등락률), ..." 형식으로 <top_value_stocks:US> 내용을 쓰세요.
 ETF가 아니라 주식 거래대금 TOP10을 우선 사용하세요.
 """

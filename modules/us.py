@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 
 from global_market_analyzer import fetch_market_top_stocks
-from modules.formatting import format_prompt_dataframe
+from modules.formatting import format_index_item, format_prompt_dataframe
 from naver_scraper import fetch_global_indicators
 from us_market_analyzer import fetch_us_etf_top
 
@@ -19,6 +19,9 @@ US_NEWS_TOPICS = {
     "healthcare": "US healthcare biotech pharma FDA earnings",
     "consumer": "US consumer spending retail restaurants travel earnings",
 }
+
+
+US_INDEX_KEYWORDS = ["S&P 500", "나스닥", "다우존스", "VIX"]
 
 
 def _to_numeric(value) -> float:
@@ -47,6 +50,19 @@ def _top_value_line(df: pd.DataFrame, count: int = 10) -> str:
         for _, row in ranked.head(count).iterrows()
     ]
     return ", ".join(items)
+
+
+def _index_line(indicators: pd.DataFrame) -> str:
+    if not isinstance(indicators, pd.DataFrame) or indicators.empty:
+        return ""
+    rows = []
+    for _, row in indicators.iterrows():
+        name = str(row.get("종목명", ""))
+        if any(keyword in name for keyword in US_INDEX_KEYWORDS):
+            rows.append(format_index_item(row))
+    if not rows:
+        return ""
+    return f"- 주요 지수: {' | '.join(rows)}"
 
 
 def _collect_news() -> dict:
@@ -85,13 +101,29 @@ def summarize_for_prompt(data: dict, max_rows: int = 18) -> str:
         "stock_nasdaq": ["종목명", "심볼", "등락률", "거래대금", "업종"],
         "etf": ["종목명", "심볼", "등락률", "거래대금", "1개월수익률", "3개월수익률", "주요보유"],
     }
-    for key in ["global_indicators", "stock_all", "stock_nyse", "stock_nasdaq", "etf"]:
+    indicators = data.get("global_indicators")
+    if isinstance(indicators, pd.DataFrame) and not indicators.empty:
+        cols = [col for col in column_map["global_indicators"] if col in indicators.columns]
+        compact = indicators[cols] if cols else indicators
+        compact = format_prompt_dataframe(compact)
+        lines.append(f"\n<global_indicators>\n{compact.head(max_rows).to_string(index=False)}")
+        index_line = _index_line(indicators)
+        if index_line:
+            lines.append(f"\n<country_indices:미국>\n{index_line}")
+
+    for key in ["stock_all", "stock_nyse", "stock_nasdaq", "etf"]:
         value = data.get(key)
         if isinstance(value, pd.DataFrame) and not value.empty:
             cols = [col for col in column_map[key] if col in value.columns]
             compact = value[cols] if cols else value
             compact = format_prompt_dataframe(compact)
-            lines.append(f"\n<{key}>\n{compact.head(max_rows).to_string(index=False)}")
+            label = {
+                "stock_all": "market:미국 전체",
+                "stock_nyse": "market:NYSE",
+                "stock_nasdaq": "market:NASDAQ",
+                "etf": "etf:US",
+            }.get(key, key)
+            lines.append(f"\n<{label}>\n{compact.head(max_rows).to_string(index=False)}")
 
     top_value = _top_value_line(data.get("stock_all"), 10)
     if top_value:
