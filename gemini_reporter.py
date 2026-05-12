@@ -57,6 +57,7 @@ Daily Review는 매 bullet마다 문장 구조를 다르게 쓰세요. 지수 �
 - 상승/하락 섹터, 거래대금 TOP10, Daily Review를 분리해 쓰세요.
 - 거래대금 TOP10은 NASDAQ, NYSE, ETF를 각각 나눠 쓰세요. ETF는 주식 TOP10과 섞지 마세요.
 - Daily Review는 지수 방향, 섹터 확산/쏠림, 금리·달러·원자재·AI/반도체·실적/가이던스 중 중요한 보조 신호를 2~4개 bullet로 압축하세요.
+- Daily Review 안에 ETF 거래대금 TOP10을 바탕으로 한 코멘트를 2줄 정도 포함하세요. 예: QQQ/SPY 중심이면 대형 지수 추종 수급, 반도체 ETF·레버리지 ETF 중심이면 AI/반도체 위험선호, Russell 2000 ETF 중심이면 중소형주 확산 여부를 해석하세요.
 미국 리포트에는 상승/하락 섹터 바로 아래에 "NASDAQ 거래대금 TOP10: 기업명(+/-등락률), ...", "NYSE 거래대금 TOP10: ...", "ETF 거래대금 TOP10: ..." 형식으로 <top_value_stocks:US> 내용을 쓰세요.
 """
     korea_instruction = ""
