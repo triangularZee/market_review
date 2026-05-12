@@ -124,9 +124,7 @@ def _latest_market_flow(investor: dict) -> list[str]:
         row = df.iloc[0]
         unit = row.get("단위", "원")
         lines.append(
-            f"- {market}: 개인 {_fmt_flow_value(row.get('개인_순매수'), unit)}, "
-            f"기관 {_fmt_flow_value(row.get('기관_순매수'), unit)}, "
-            f"외국인 {_fmt_flow_value(row.get('외인_순매수'), unit)}"
+            f"- {market}: 외국인 {_fmt_flow_value(row.get('외인_순매수'), unit)}"
         )
 
     return lines
