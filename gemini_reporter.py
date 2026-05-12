@@ -38,6 +38,7 @@ def build_prompt(context: str, region: str = "all") -> str:
 그외 시장 리포트는 반드시 국가/지역별로 나누세요:
 [중국], [홍콩], [일본], [대만]
 각 국가/지역 아래에 주요 지수, 상승/하락 섹터, Daily Review를 2~4개 bullet로 압축하세요.
+각 국가/지역의 상승/하락 섹터 바로 아래에 "거래대금 TOP10: 기업명(+/-등락률), ..." 형식으로 <top_value_stocks:국가> 내용을 쓰세요.
 중국은 상해와 심천 데이터를 함께 묶고, 홍콩/일본/대만은 각각 독립 섹션으로 유지하세요.
 각 국가/지역 섹션마다 반드시 <한 줄 평>을 넣고, 바로 아래 "- ..." 한 문장으로 해당 국가의 핵심 장세를 요약하세요.
 한 줄 평은 뉴스플로어와 raw data를 모두 반영해 "AI 반도체 랠리", "환율 부담", "정책 기대", "차익실현", "방어주/전통 섹터 부진"처럼 원인과 결과가 드러나게 쓰세요.
@@ -46,6 +47,12 @@ def build_prompt(context: str, region: str = "all") -> str:
 거래대금은 시장 전체 합계가 원자료에 명확히 있을 때만 1줄로 쓰고, 없으면 생략하세요.
 Daily Review는 매 bullet마다 문장 구조를 다르게 쓰세요. 지수 방향, 섹터 확산/쏠림, 정책·매크로·환율·AI/반도체 모멘텀, 차익실현/방어주 흐름을 섞어 해석하세요.
 세 bullet 모두 "A와 B가 강세/약세" 식의 종목 나열로 반복하지 마세요.
+"""
+    us_instruction = ""
+    if region == "us":
+        us_instruction = """
+미국 리포트에는 상승/하락 섹터 바로 아래에 "거래대금 TOP10: 기업명(+/-등락률), ..." 형식으로 <top_value_stocks:US> 내용을 쓰세요.
+ETF가 아니라 주식 거래대금 TOP10을 우선 사용하세요.
 """
     korea_instruction = ""
     if region in {"all", "korea"}:
@@ -64,6 +71,7 @@ Daily Review는 매 bullet마다 문장 구조를 다르게 쓰세요. 지수 �
 대상 범위: {region}
 기준일: {date_title}
 {other_instruction}
+{us_instruction}
 {korea_instruction}
 
 수집 데이터:

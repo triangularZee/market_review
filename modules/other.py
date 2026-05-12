@@ -33,6 +33,64 @@ COUNTRY_NEWS = {
 }
 
 
+def _to_numeric(value) -> float:
+    return pd.to_numeric(str(value).replace(",", ""), errors="coerce")
+
+
+def _format_change(value, close=None, is_rate: bool = True) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "N/A"
+    if "%" in text:
+        return text.replace("▲", "").replace("▼", "").strip()
+    try:
+        number = float(text)
+    except Exception:
+        return text
+    if not is_rate and close is not None:
+        close_value = _to_numeric(close)
+        previous = close_value - number
+        if pd.notna(close_value) and previous:
+            rate = number / previous * 100
+            sign = "+" if rate > 0 else ""
+            return f"{sign}{rate:.2f}%"
+    sign = "+" if number > 0 else ""
+    suffix = "%" if is_rate else ""
+    return f"{sign}{number:.2f}{suffix}"
+
+
+def _top_value_line(frames: list[pd.DataFrame], count: int = 10) -> str:
+    valid = []
+    for df in frames:
+        if not isinstance(df, pd.DataFrame) or df.empty or "종목명" not in df.columns:
+            continue
+        value_col = next((col for col in ["거래대금", "거래대금(TWD)"] if col in df.columns), None)
+        change_col = next((col for col in ["등락률", "등락"] if col in df.columns), None)
+        if value_col is None or change_col is None:
+            continue
+        cols = ["종목명", value_col, change_col]
+        if "종가" in df.columns:
+            cols.append("종가")
+        compact = df[cols].copy()
+        compact.columns = ["종목명", "거래대금", "등락률"] + (["종가"] if "종가" in cols else [])
+        compact["등락률여부"] = change_col == "등락률"
+        valid.append(compact)
+    if not valid:
+        return ""
+    ranked = pd.concat(valid, ignore_index=True)
+    ranked["_거래대금"] = ranked["거래대금"].map(_to_numeric)
+    ranked = ranked.dropna(subset=["_거래대금"]).sort_values("_거래대금", ascending=False)
+    items = []
+    for _, row in ranked.iterrows():
+        change = _format_change(row["등락률"], row.get("종가"), bool(row.get("등락률여부", True)))
+        if change == "N/A":
+            continue
+        items.append(f"{row['종목명']}({change})")
+        if len(items) >= count:
+            break
+    return ", ".join(items)
+
+
 def _collect_news() -> dict:
     from news_scraper import fetch_all_topic_news, generate_news_context
 
@@ -71,9 +129,11 @@ def summarize_for_prompt(data: dict, max_rows: int = 18) -> str:
 
     for country, market_names in COUNTRY_MARKETS.items():
         lines.append(f"\n[{country}]")
+        country_frames = []
         for market in market_names:
             df = markets.get(market)
             if isinstance(df, pd.DataFrame) and not df.empty:
+                country_frames.append(df)
                 cols = [
                     col for col in ["종목명", "심볼", "등락률", "업종", "등락"]
                     if col in df.columns
@@ -85,6 +145,10 @@ def summarize_for_prompt(data: dict, max_rows: int = 18) -> str:
                     lines.append(f"<taiex>{taiex}")
             else:
                 lines.append(f"\n<market:{market}> 데이터 없음")
+
+        top_value = _top_value_line(country_frames, 10)
+        if top_value:
+            lines.append(f"\n<top_value_stocks:{country}>\n- 거래대금 TOP10: {top_value}")
 
         for topic in COUNTRY_NEWS.get(country, []):
             articles = topics.get(topic) or []

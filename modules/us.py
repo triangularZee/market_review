@@ -20,6 +20,34 @@ US_NEWS_TOPICS = {
 }
 
 
+def _to_numeric(value) -> float:
+    return pd.to_numeric(str(value).replace(",", ""), errors="coerce")
+
+
+def _format_change(value) -> str:
+    try:
+        number = float(value)
+    except Exception:
+        text = str(value or "").strip()
+        return text if text else "N/A"
+    sign = "+" if number > 0 else ""
+    return f"{sign}{number:.2f}%"
+
+
+def _top_value_line(df: pd.DataFrame, count: int = 10) -> str:
+    required = {"종목명", "등락률", "거래대금"}
+    if not isinstance(df, pd.DataFrame) or df.empty or not required.issubset(df.columns):
+        return ""
+    ranked = df.copy()
+    ranked["_거래대금"] = ranked["거래대금"].map(_to_numeric)
+    ranked = ranked.dropna(subset=["_거래대금"]).sort_values("_거래대금", ascending=False)
+    items = [
+        f"{row['종목명']}({_format_change(row['등락률'])})"
+        for _, row in ranked.head(count).iterrows()
+    ]
+    return ", ".join(items)
+
+
 def _collect_news() -> dict:
     from news_scraper import fetch_all_topic_news, generate_news_context
 
@@ -62,6 +90,10 @@ def summarize_for_prompt(data: dict, max_rows: int = 18) -> str:
             cols = [col for col in column_map[key] if col in value.columns]
             compact = value[cols] if cols else value
             lines.append(f"\n<{key}>\n{compact.head(max_rows).to_string(index=False)}")
+
+    top_value = _top_value_line(data.get("stock_all"), 10)
+    if top_value:
+        lines.append(f"\n<top_value_stocks:US>\n- 거래대금 TOP10: {top_value}")
 
     news = data.get("news") or {}
     for topic, articles in list((news.get("topics") or {}).items())[:8]:
