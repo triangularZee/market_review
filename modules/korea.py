@@ -99,51 +99,57 @@ def _latest_market_flow(investor: dict) -> list[str]:
     return lines
 
 
-def _top3_by_investor(investor: dict) -> list[str]:
+def _top5_by_investor(investor: dict) -> list[str]:
     lines = []
-    market_map = {
-        "코스피": ("0795_kospi_buy", "0795_kospi_sell"),
-        "코스닥": ("0795_kosdaq_buy", "0795_kosdaq_sell"),
-    }
-    for market, (buy_key, sell_key) in market_map.items():
-        buy_df = investor.get(buy_key, pd.DataFrame())
-        sell_df = investor.get(sell_key, pd.DataFrame())
-        market_lines = [f"[{market}]"]
-        for subject, label in INVESTORS.items():
-            subject_buy = (
-                buy_df[buy_df["투자자"] == subject].head(5)
-                if isinstance(buy_df, pd.DataFrame)
-                and not buy_df.empty
-                and "투자자" in buy_df.columns
-                else pd.DataFrame()
+    buy_frames = [
+        investor.get("0795_kospi_buy", pd.DataFrame()),
+        investor.get("0795_kosdaq_buy", pd.DataFrame()),
+    ]
+    sell_frames = [
+        investor.get("0795_kospi_sell", pd.DataFrame()),
+        investor.get("0795_kosdaq_sell", pd.DataFrame()),
+    ]
+    buy_df = pd.concat(
+        [df for df in buy_frames if isinstance(df, pd.DataFrame) and not df.empty],
+        ignore_index=True,
+    ) if any(isinstance(df, pd.DataFrame) and not df.empty for df in buy_frames) else pd.DataFrame()
+    sell_df = pd.concat(
+        [df for df in sell_frames if isinstance(df, pd.DataFrame) and not df.empty],
+        ignore_index=True,
+    ) if any(isinstance(df, pd.DataFrame) and not df.empty for df in sell_frames) else pd.DataFrame()
+
+    def pick_top(df: pd.DataFrame, subject: str, side: str) -> pd.DataFrame:
+        if not isinstance(df, pd.DataFrame) or df.empty or "투자자" not in df.columns:
+            return pd.DataFrame()
+        subject_df = df[df["투자자"] == subject].copy()
+        if subject_df.empty or "순매수금액" not in subject_df.columns:
+            return pd.DataFrame()
+        subject_df["순매수금액"] = pd.to_numeric(subject_df["순매수금액"], errors="coerce").fillna(0)
+        ascending = side == "sell"
+        return subject_df.sort_values("순매수금액", ascending=ascending).head(5)
+
+    def fmt_rows(df: pd.DataFrame) -> str:
+        items = []
+        for _, r in df.iterrows():
+            change = str(r.get("등락률", "") or "").strip()
+            change_suffix = f", {change}%" if change else ""
+            items.append(
+                f"{r.get('종목명')}({_fmt_krw(r.get('순매수금액'))}{change_suffix})"
             )
-            subject_sell = (
-                sell_df[sell_df["투자자"] == subject].head(5)
-                if isinstance(sell_df, pd.DataFrame)
-                and not sell_df.empty
-                and "투자자" in sell_df.columns
-                else pd.DataFrame()
-            )
+        return ", ".join(items)
 
-            def fmt_rows(df: pd.DataFrame) -> str:
-                items = []
-                for _, r in df.iterrows():
-                    change = str(r.get("등락률", "") or "").strip()
-                    change_suffix = f", {change}%" if change else ""
-                    items.append(
-                        f"{r.get('종목명')}({_fmt_krw(r.get('순매수금액'))}{change_suffix})"
-                    )
-                return ", ".join(items)
+    top_lines = ["[국내 통합]"]
+    for subject, label in INVESTORS.items():
+        subject_buy = pick_top(buy_df, subject, "buy")
+        subject_sell = pick_top(sell_df, subject, "sell")
+        if not subject_buy.empty:
+            top_lines.append(f"- {label} 순매수 TOP5: {fmt_rows(subject_buy)}")
+        if not subject_sell.empty:
+            top_lines.append(f"- {label} 순매도 TOP5: {fmt_rows(subject_sell)}")
 
-            if not subject_buy.empty:
-                market_lines.append(f"- {label} 순매수 TOP5: {fmt_rows(subject_buy)}")
-            if not subject_sell.empty:
-                market_lines.append(f"- {label} 순매도 TOP5: {fmt_rows(subject_sell)}")
-
-        if len(market_lines) > 1:
-            if not lines:
-                lines.append("\n<korea_investor_top5_by_subject>")
-            lines.extend(market_lines)
+    if len(top_lines) > 1:
+        lines.append("\n<korea_investor_top5_by_subject_combined>")
+        lines.extend(top_lines)
     return lines
 
 
@@ -194,7 +200,7 @@ def summarize_for_prompt(data: dict, max_rows: int = 12) -> str:
     investor = data.get("investor") or {}
     if investor:
         lines.extend(_latest_market_flow(investor))
-        lines.extend(_top3_by_investor(investor))
+        lines.extend(_top5_by_investor(investor))
 
     for key, value in investor.items():
         if isinstance(value, pd.DataFrame) and not value.empty:
