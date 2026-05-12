@@ -7,11 +7,35 @@ import pandas as pd
 from naver_scraper import (
     fetch_exchange_rates,
     fetch_global_indicators,
+    fetch_index_investor_flows,
     fetch_sector_top10,
 )
 
 
 INVESTORS = {"개인": "개인", "기관": "기관", "외인": "외국인"}
+
+
+def _has_market_flow(investor: dict) -> bool:
+    for key in ["0780_kospi", "0780_kosdaq"]:
+        value = investor.get(key)
+        if isinstance(value, pd.DataFrame) and not value.empty:
+            return True
+    return False
+
+
+def _apply_naver_investor_fallback(data: dict) -> None:
+    investor = data.setdefault("investor", {})
+    if _has_market_flow(investor):
+        return
+    try:
+        fallback = fetch_index_investor_flows()
+        for key, value in fallback.items():
+            if isinstance(value, pd.DataFrame) and not value.empty:
+                investor[key] = value
+        if _has_market_flow(investor):
+            data["investor_fallback"] = "네이버 지수 투자정보"
+    except Exception as exc:
+        data["investor_fallback_error"] = str(exc)
 
 
 def _fmt_krw(value) -> str:
@@ -105,6 +129,8 @@ def collect(include_krx: bool = True, include_news: bool = True) -> dict:
             data["investor"] = collect_all_krx()
         except Exception as exc:
             data["investor_error"] = str(exc)
+        finally:
+            _apply_naver_investor_fallback(data)
 
     if include_news:
         try:
@@ -161,5 +187,9 @@ def summarize_for_prompt(data: dict, max_rows: int = 12) -> str:
     for err_key in ["investor_error", "news_error"]:
         if data.get(err_key):
             lines.append(f"\n<{err_key}> {data[err_key]}")
+    if data.get("investor_fallback"):
+        lines.append(f"\n<investor_fallback> {data['investor_fallback']}")
+    if data.get("investor_fallback_error"):
+        lines.append(f"\n<investor_fallback_error> {data['investor_fallback_error']}")
 
     return "\n".join(lines)
