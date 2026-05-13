@@ -130,21 +130,41 @@ Daily Review
 - 섹션별 업데이트가 없으면 그 섹션은 생략해도 됩니다.
 - "주요 지수:" 아래 설명은 반드시 "•" bullet 형식으로 쓰고, 한 bullet은 한 줄로 짧게 쓰세요.
 - "AI 시장 종합 분석 리포트", "Powered by Google Gemini" 같은 시스템 헤더를 절대 쓰지 마세요.
+- "스크립트가 성공적으로 완료되었습니다", "아래는 오늘 시황 요약입니다", "텔레그램으로 전송되었습니다" 같은 실행 상태 안내문을 절대 쓰지 마세요.
+- "---" 같은 구분선, 마크다운 코드펜스, 완료/성공/전송 안내 문장은 리포트 본문이 아니므로 쓰지 마세요.
 """
 
 
 def _clean_response(text: str) -> str:
     lines = []
+    banned_fragments = [
+        "스크립트가 성공적으로 완료",
+        "아래는 오늘",
+        "아래는 금일",
+        "시황 요약입니다",
+        "텔레그램으로",
+        "전송되었습니다",
+        "전송 완료",
+        "성공적으로 완료",
+        "script completed",
+        "successfully completed",
+        "sent to telegram",
+    ]
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped:
             lines.append(line)
             continue
-        if set(stripped) <= {"="}:
+        if set(stripped) <= {"=", "-", "_"}:
+            continue
+        if stripped.startswith("```"):
             continue
         if stripped == "AI 시장 종합 분석 리포트":
             continue
         if "Powered by Google Gemini" in stripped:
+            continue
+        lowered = stripped.lower()
+        if any(fragment.lower() in lowered for fragment in banned_fragments):
             continue
         lines.append(line.rstrip())
     text = "\n".join(lines).strip()
