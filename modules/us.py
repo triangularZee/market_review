@@ -128,7 +128,6 @@ def summarize_for_prompt(data: dict, max_rows: int = 18) -> str:
     top_value_sections = [
         ("NASDAQ", _top_value_line(data.get("stock_nasdaq"), 10)),
         ("NYSE", _top_value_line(data.get("stock_nyse"), 10)),
-        ("ETF", _top_value_line(data.get("etf"), 10)),
     ]
     top_value_lines = [
         f"- {label} 거래대금 TOP10: {value}"
