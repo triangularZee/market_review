@@ -10,7 +10,6 @@ from naver_scraper import (
     fetch_global_indicators,
     fetch_index_investor_flows,
     fetch_index_program_flows,
-    fetch_naver_investor_top_stocks,
     fetch_sector_top10,
 )
 
@@ -62,15 +61,9 @@ def _apply_naver_investor_fallback(data: dict) -> None:
             data["investor_fallback_error"] = str(exc)
 
     if not _has_investor_top_stocks(investor):
-        try:
-            fallback = fetch_naver_investor_top_stocks(top_n=5)
-            for key, value in fallback.items():
-                if isinstance(value, pd.DataFrame) and not value.empty:
-                    investor[key] = value
-            if _has_investor_top_stocks(investor):
-                fallback_sources.append("네이버 금융 투자자별 매매상위")
-        except Exception as exc:
-            data["investor_top_fallback_error"] = str(exc)
+        data["investor_top_fallback_error"] = (
+            "네이버 금융 투자자별 매매상위는 기준일이 없어 생략"
+        )
 
     if not _has_program_flow(investor):
         try:
@@ -153,15 +146,35 @@ def _latest_program_flow(investor: dict) -> list[str]:
     return lines if has_data else []
 
 
+def _target_investor_date(investor: dict) -> str:
+    for key in ["0780_kospi", "0780_kosdaq", "0780_fut"]:
+        df = investor.get(key)
+        if isinstance(df, pd.DataFrame) and not df.empty and "일자" in df.columns:
+            return str(df.iloc[0].get("일자", "")).replace("-", "").replace("/", "")[:8]
+    return ""
+
+
+def _date_aligned(df: pd.DataFrame, target_date: str) -> pd.DataFrame:
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return pd.DataFrame()
+    if not target_date:
+        return df
+    if "일자" not in df.columns:
+        return pd.DataFrame()
+    dates = df["일자"].astype(str).str.replace("-", "", regex=False).str.replace("/", "", regex=False).str[:8]
+    return df[dates == target_date].copy()
+
+
 def _top5_by_investor(investor: dict) -> list[str]:
     lines = []
+    target_date = _target_investor_date(investor)
     buy_frames = [
-        investor.get("0795_kospi_buy", pd.DataFrame()),
-        investor.get("0795_kosdaq_buy", pd.DataFrame()),
+        _date_aligned(investor.get("0795_kospi_buy", pd.DataFrame()), target_date),
+        _date_aligned(investor.get("0795_kosdaq_buy", pd.DataFrame()), target_date),
     ]
     sell_frames = [
-        investor.get("0795_kospi_sell", pd.DataFrame()),
-        investor.get("0795_kosdaq_sell", pd.DataFrame()),
+        _date_aligned(investor.get("0795_kospi_sell", pd.DataFrame()), target_date),
+        _date_aligned(investor.get("0795_kosdaq_sell", pd.DataFrame()), target_date),
     ]
     buy_df = pd.concat(
         [df for df in buy_frames if isinstance(df, pd.DataFrame) and not df.empty],
@@ -249,6 +262,10 @@ def summarize_for_prompt(data: dict, max_rows: int = 12) -> str:
         if isinstance(value, pd.DataFrame) and not value.empty:
             cols = [col for col in column_map[key] if col in value.columns]
             compact = value[cols] if cols else value
+            if key == "global_indicators" and "분류" in compact.columns:
+                compact = compact[
+                    compact["분류"].isin(["국내지수", "환율", "금속", "에너지"])
+                ]
             compact = format_prompt_dataframe(compact)
             lines.append(f"\n<{key}>\n{compact.head(max_rows).to_string(index=False)}")
 
@@ -261,6 +278,10 @@ def summarize_for_prompt(data: dict, max_rows: int = 12) -> str:
     for key, value in investor.items():
         if isinstance(value, pd.DataFrame) and not value.empty:
             compact = value
+            if key.startswith("0795_"):
+                compact = _date_aligned(value, _target_investor_date(investor))
+                if compact.empty:
+                    continue
             if key.startswith("2780_"):
                 compact = value.drop(columns=["전체_순매수"], errors="ignore")
             compact = format_prompt_dataframe(compact)

@@ -139,6 +139,7 @@ def get_net_buy_sell_stocks(
             net_buy = df[df["순매수거래대금"] > 0].nlargest(20, "순매수거래대금")
             for rank, (ticker, row) in enumerate(net_buy.iterrows(), 1):
                 buy_rows.append({
+                    "일자": date,
                     "투자자": inv_label,
                     "매매구분": "순매수",
                     "순위": rank,
@@ -153,6 +154,7 @@ def get_net_buy_sell_stocks(
             net_sell = df[df["순매수거래대금"] < 0].nsmallest(20, "순매수거래대금")
             for rank, (ticker, row) in enumerate(net_sell.iterrows(), 1):
                 sell_rows.append({
+                    "일자": date,
                     "투자자": inv_label,
                     "매매구분": "순매도",
                     "순위": rank,
