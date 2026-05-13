@@ -14,7 +14,9 @@ if _ENV_PATH.exists():
         line = line.strip()
         if line and not line.startswith("#") and "=" in line:
             key, _, value = line.partition("=")
-            os.environ.setdefault(key.strip(), value.strip())
+            value = value.strip()
+            if value:
+                os.environ[key.strip()] = value
 
 
 def split_telegram(text: str, limit: int = 3900) -> list[str]:

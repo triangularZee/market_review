@@ -33,3 +33,8 @@ python main.py --region us
 python main.py --region other
 python main.py --region all --send-telegram
 ```
+
+For cron on a host that runs multiple Telegram bots, run from this repository
+directory and keep this repo's `.env` populated. Non-empty values in `.env`
+override inherited cron/service environment variables, so the current bot token
+is used even if the host has an older `TELEGRAM_BOT_TOKEN` exported.
