@@ -32,8 +32,19 @@ def build_prompt(context: str, region: str = "all") -> str:
         "all": f"{date_title} 글로벌 마감시황",
     }
     report_title = title_map.get(region, f"{date_title} 글로벌 마감시황")
+    all_instruction = ""
+    if region == "all":
+        all_instruction = """
+전체 리포트는 실행 요약이 아니라 텔레그램 본문이어야 합니다.
+반드시 아래 섹션 순서로 작성하세요:
+[한국]
+[미국]
+[아시아]
+각 섹션은 해당 지역의 정식 포맷을 유지하고, "Korea", "US", "Other" 같은 모듈명이나 "실행 완료" 문구를 쓰지 마세요.
+미국 섹션을 생략하지 마세요. 한국, 미국, 아시아가 모두 있어야 합니다.
+"""
     other_instruction = ""
-    if region == "other":
+    if region in {"all", "other"}:
         other_instruction = """
 그외 시장 리포트는 반드시 국가/지역별로 나누세요:
 [중국], [홍콩], [일본], [대만]
@@ -52,7 +63,7 @@ Daily Review는 매 bullet마다 문장 구조를 다르게 쓰세요. 지수 �
 대만 기업명은 한자 원문 대신 영어명으로 쓰세요. 예: 台積電은 TSMC, 聯發科는 MediaTek, 聯電은 UMC.
 """
     us_instruction = ""
-    if region == "us":
+    if region in {"all", "us"}:
         us_instruction = """
 미국 리포트도 아시아 리포트처럼 큰 구조를 맞추세요:
 - 주요 지수에는 S&P 500, 나스닥, 다우, VIX를 우선 반영하세요.
@@ -78,6 +89,7 @@ Daily Review는 매 bullet마다 문장 구조를 다르게 쓰세요. 지수 �
 
 대상 범위: {region}
 기준일: {date_title}
+{all_instruction}
 {other_instruction}
 {us_instruction}
 {korea_instruction}
@@ -130,6 +142,8 @@ Daily Review
 - "주요 지수:" 아래 설명은 반드시 "•" bullet 형식으로 쓰고, 한 bullet은 한 줄로 짧게 쓰세요.
 - "AI 시장 종합 분석 리포트", "Powered by Google Gemini" 같은 시스템 헤더를 절대 쓰지 마세요.
 - "스크립트가 성공적으로 완료되었습니다", "아래는 오늘 시황 요약입니다", "텔레그램으로 전송되었습니다" 같은 실행 상태 안내문을 절대 쓰지 마세요.
+- "실행 완료했습니다", "로그 일부 출력이 잘렸지만", "정상 수집되었습니다" 같은 작업 로그를 절대 쓰지 마세요.
+- "**Korea**", "**US**", "**Other**" 같은 영어 모듈명으로 섹션을 만들지 마세요. 반드시 [한국], [미국], [아시아] 또는 [중국]처럼 한국어 섹션명을 쓰세요.
 - "---" 같은 구분선, 마크다운 코드펜스, 완료/성공/전송 안내 문장은 리포트 본문이 아니므로 쓰지 마세요.
 """
 
@@ -145,6 +159,11 @@ def _clean_response(text: str) -> str:
         "전송되었습니다",
         "전송 완료",
         "성공적으로 완료",
+        "실행 완료",
+        "로그 일부",
+        "정상 수집",
+        "정상적으로 수집",
+        "아래는",
         "script completed",
         "successfully completed",
         "sent to telegram",
@@ -161,6 +180,8 @@ def _clean_response(text: str) -> str:
         if stripped == "AI 시장 종합 분석 리포트":
             continue
         if "Powered by Google Gemini" in stripped:
+            continue
+        if stripped.startswith(("**Korea", "**US", "**Other", "Korea (", "US (", "Other (")):
             continue
         lowered = stripped.lower()
         if any(fragment.lower() in lowered for fragment in banned_fragments):
