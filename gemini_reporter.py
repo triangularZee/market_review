@@ -79,10 +79,10 @@ Daily Review는 매 bullet마다 문장 구조를 다르게 쓰세요. 지수 �
 - 한국 리포트의 주요 지수에는 코스피, 코스닥, 원/달러 환율 등 한국 관련 지표만 쓰세요. 다우, 나스닥, S&P 500, 니케이, 상해, 항셍 등 해외 지수는 한국 섹션 주요 지수에 쓰지 마세요.
 - 코스피/코스닥 개인/기관/외국인 주체별 순매매대금과 선물 개인/기관/외국인 순매매 계약 수.
 - 코스피/코스닥 프로그램 매매: 차익, 비차익 순매매대금. 전체 순매매대금은 쓰지 마세요.
-- 외국인 순매수 TOP5와 순매도 TOP5는 코스피/코스닥을 합친 국내 통합 랭킹만 쓰세요.
-- 국내 통합 외국인 TOP5는 반드시 "기업명(+1,000억원)" 또는 "기업명(-1,000억원)"처럼 기업명 뒤에 매매대금을 괄호로 적으세요.
+- <korea_investor_top5_by_subject_combined> 원자료가 있을 때만 외국인 순매수 TOP5와 순매도 TOP5를 쓰세요. 이 태그가 없으면 TOP5를 절대 쓰지 마세요.
+- 국내 통합 외국인 TOP5를 쓸 때는 반드시 "기업명(+1,000억원)" 또는 "기업명(-1,000억원)"처럼 기업명 뒤에 매매대금을 괄호로 적으세요.
 - 개인/기관 TOP5는 쓰지 마세요.
-- TOP5 원자료가 없으면 "데이터 없음" 줄을 만들지 말고 생략하세요.
+- TOP5 원자료가 없으면 "데이터 없음" 줄을 만들지 말고 완전히 생략하세요. 뉴스, 과거 응답, 추정값으로 TOP5를 만들지 마세요.
 - 선물/주식선물/달러선물 수급은 원자료에 있을 때만 쓰세요. 없으면 "데이터 없음" 줄을 만들지 말고 생략하세요.
 """
     return f"""당신은 텔레그램용 글로벌 시장 데일리 브리프를 쓰는 한국어 애널리스트입니다.
@@ -135,6 +135,8 @@ Daily Review
 - 첫 줄 제목은 반드시 "{report_title}"로 쓰세요.
 - <한 줄 평> 아래 문장은 모두 "- "로 시작하세요. bullet 없이 평문으로 쓰지 마세요.
 - 수치는 원자료에 있는 것만 쓰고 만들지 마세요.
+- 수급 숫자나 TOP5를 뉴스 기반 추정값으로 만들지 마세요. 원자료가 없으면 해당 항목을 생략하세요.
+- 사용자에게 "어떤 수치가 안 맞는지 알려달라", "원인 파악이 빠르다" 같은 질문이나 진단 문구를 쓰지 마세요. 리포트 본문만 쓰세요.
 - Daily Review에 "시장 방향성과 주도/부진 섹터", "주체별 순매수/순매도 동향", "환율/ETF/원자재/수급 중 중요한 보조 신호" 같은 템플릿 문구를 그대로 쓰지 마세요.
 - 특정 기업명을 언급할 때는 반드시 "기업명(+1.23%)" 또는 "기업명(-1.23%)"처럼 등락률을 괄호 안에 함께 쓰세요.
 - 단, 국내 통합 외국인 순매수/순매도 TOP5는 등락률 대신 매매대금을 괄호 안에 쓰세요. 기업명만 나열하지 마세요.
@@ -149,7 +151,7 @@ Daily Review
 """
 
 
-def _clean_response(text: str) -> str:
+def _clean_response(text: str, allow_korea_top5: bool = True) -> str:
     lines = []
     banned_fragments = [
         "스크립트가 성공적으로 완료",
@@ -165,6 +167,12 @@ def _clean_response(text: str) -> str:
         "정상 수집",
         "정상적으로 수집",
         "아래는",
+        "뉴스 기반 추정",
+        "추정값",
+        "어떤 수치가 안 맞는지",
+        "구체적으로 알려주시면",
+        "원인 파악",
+        "확인해드리겠습니다",
         "script completed",
         "successfully completed",
         "sent to telegram",
@@ -183,6 +191,8 @@ def _clean_response(text: str) -> str:
         if "Powered by Google Gemini" in stripped:
             continue
         if stripped.startswith(("**Korea", "**US", "**Other", "Korea (", "US (", "Other (")):
+            continue
+        if "국내 통합 외국인" in stripped and "TOP5" in stripped and not allow_korea_top5:
             continue
         lowered = stripped.lower()
         if any(fragment.lower() in lowered for fragment in banned_fragments):
@@ -218,4 +228,7 @@ def generate_report(context: str, region: str = "all") -> str:
     if not candidates:
         raise ValueError(f"Gemini 응답 없음: {result}")
     parts = candidates[0].get("content", {}).get("parts", [])
-    return _clean_response("\n".join(part.get("text", "") for part in parts))
+    return _clean_response(
+        "\n".join(part.get("text", "") for part in parts),
+        allow_korea_top5="<korea_investor_top5_by_subject_combined>" in context,
+    )

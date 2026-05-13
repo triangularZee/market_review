@@ -305,16 +305,10 @@ def summarize_for_prompt(data: dict, max_rows: int = 12) -> str:
         for article in articles[:4]:
             lines.append(f"- {article.get('title', '')}")
 
-    for err_key in ["investor_error", "news_error"]:
+    for err_key in ["news_error"]:
         if data.get(err_key):
             lines.append(f"\n<{err_key}> {data[err_key]}")
     if data.get("investor_fallback"):
         lines.append(f"\n<investor_fallback> {data['investor_fallback']}")
-    if data.get("investor_fallback_error"):
-        lines.append(f"\n<investor_fallback_error> {data['investor_fallback_error']}")
-    if data.get("investor_top_fallback_error"):
-        lines.append(f"\n<investor_top_fallback_error> {data['investor_top_fallback_error']}")
-    if data.get("program_fallback_error"):
-        lines.append(f"\n<program_fallback_error> {data['program_fallback_error']}")
 
     return "\n".join(lines)
