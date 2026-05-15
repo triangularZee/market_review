@@ -16,9 +16,23 @@ KRX 공개 데이터를 수집하는 크로스 플랫폼 모듈.
 import sys
 from io import StringIO
 from datetime import datetime, timedelta
+import os
+from pathlib import Path
 
 import requests
 import pandas as pd
+
+
+_ENV_PATH = Path(__file__).resolve().parent / ".env"
+if _ENV_PATH.exists():
+    for line in _ENV_PATH.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, _, value = line.partition("=")
+            value = value.strip()
+            if value:
+                os.environ[key.strip()] = value
+
 from pykrx import stock
 
 from config import START_DATE, END_DATE
