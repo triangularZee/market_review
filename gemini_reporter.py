@@ -23,7 +23,10 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
 GEMINI_API_KEY = os.environ.get("GOOGLE_AI_API_KEY", "")
 GEMINI_TEMPERATURE = float(os.environ.get("GEMINI_TEMPERATURE", "0.35"))
 GEMINI_MAX_OUTPUT_TOKENS = int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "4096"))
-GEMINI_THINKING_LEVEL = os.environ.get("GEMINI_THINKING_LEVEL", "low").strip()
+GEMINI_THINKGLEVEL = os.environ.get(
+    "GEMINI_THINKGLEVEL",
+    os.environ.get("GEMINI_THINKING_LEVEL", "low"),
+).strip()
 
 
 def build_prompt(context: str, region: str = "all") -> str:
@@ -215,9 +218,9 @@ def generate_report(context: str, region: str = "all") -> str:
         "temperature": GEMINI_TEMPERATURE,
         "maxOutputTokens": GEMINI_MAX_OUTPUT_TOKENS,
     }
-    if GEMINI_THINKING_LEVEL:
+    if GEMINI_THINKGLEVEL:
         generation_config["thinkingConfig"] = {
-            "thinkingLevel": GEMINI_THINKING_LEVEL,
+            "thinkingLevel": GEMINI_THINKGLEVEL,
         }
 
     payload = {
