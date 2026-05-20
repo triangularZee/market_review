@@ -25,7 +25,7 @@ GEMINI_TEMPERATURE = float(os.environ.get("GEMINI_TEMPERATURE", "0.35"))
 GEMINI_MAX_OUTPUT_TOKENS = int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "4096"))
 GEMINI_THINKGLEVEL = os.environ.get(
     "GEMINI_THINKGLEVEL",
-    os.environ.get("GEMINI_THINKING_LEVEL", "low"),
+    os.environ.get("GEMINI_THINKING_LEVEL", "high"),
 ).strip()
 
 
