@@ -16,12 +16,18 @@ Create `.env` or set environment variables:
 
 ```text
 GOOGLE_AI_API_KEY=...
-GEMINI_MODEL=gemini-3-flash-preview
+GEMINI_MODEL=gemini-3.5-flash
+GEMINI_TEMPERATURE=0.35
+GEMINI_MAX_OUTPUT_TOKENS=4096
+GEMINI_THINKING_LEVEL=low
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...
 ```
 
 Telegram variables are only required with `--send-telegram`.
+`GEMINI_THINKING_LEVEL` is optional. For Gemini 3-series Flash models, use
+`minimal`, `low`, `medium`, or `high`; leave it blank to omit
+`thinkingConfig`.
 
 ## Run
 

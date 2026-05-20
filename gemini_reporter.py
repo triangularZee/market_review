@@ -19,8 +19,11 @@ if _ENV_PATH.exists():
             os.environ.setdefault(key.strip(), value.strip())
 
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
 GEMINI_API_KEY = os.environ.get("GOOGLE_AI_API_KEY", "")
+GEMINI_TEMPERATURE = float(os.environ.get("GEMINI_TEMPERATURE", "0.35"))
+GEMINI_MAX_OUTPUT_TOKENS = int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "4096"))
+GEMINI_THINKING_LEVEL = os.environ.get("GEMINI_THINKING_LEVEL", "low").strip()
 
 
 def build_prompt(context: str, region: str = "all") -> str:
@@ -208,12 +211,18 @@ def generate_report(context: str, region: str = "all") -> str:
         raise ValueError("GOOGLE_AI_API_KEY 환경변수가 필요합니다.")
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+    generation_config = {
+        "temperature": GEMINI_TEMPERATURE,
+        "maxOutputTokens": GEMINI_MAX_OUTPUT_TOKENS,
+    }
+    if GEMINI_THINKING_LEVEL:
+        generation_config["thinkingConfig"] = {
+            "thinkingLevel": GEMINI_THINKING_LEVEL,
+        }
+
     payload = {
         "contents": [{"parts": [{"text": build_prompt(context, region)}]}],
-        "generationConfig": {
-            "temperature": 0.35,
-            "maxOutputTokens": 4096,
-        },
+        "generationConfig": generation_config,
     }
     resp = requests.post(
         url,
