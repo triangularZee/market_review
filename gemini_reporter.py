@@ -28,6 +28,13 @@ GEMINI_THINKGLEVEL = os.environ.get(
     os.environ.get("GEMINI_THINKING_LEVEL", "high"),
 ).strip()
 
+REPORT_START_RE = re.compile(
+    r"(?m)^\s*\d{2}\.\d{2}\.\d{2}\s+(?:한국|미국|아시아|글로벌)\s+마감시황\s*$"
+)
+SECTION_START_RE = re.compile(
+    r"(?m)^\s*\[(?:한국|미국|아시아|중국|홍콩|일본|대만)\]\s*$"
+)
+
 
 def build_prompt(context: str, region: str = "all") -> str:
     date_title = datetime.now().strftime("%y.%m.%d")
@@ -158,8 +165,15 @@ Daily Review
 
 
 def _clean_response(text: str, allow_korea_top5: bool = True) -> str:
+    start_match = REPORT_START_RE.search(text) or SECTION_START_RE.search(text)
+    if start_match:
+        text = text[start_match.start() :]
+
     lines = []
     banned_fragments = [
+        "all numbers match",
+        "let's structure",
+        "raw data:",
         "스크립트가 성공적으로 완료",
         "아래는 오늘",
         "아래는 금일",
@@ -240,7 +254,10 @@ def generate_report(context: str, region: str = "all") -> str:
     if not candidates:
         raise ValueError(f"Gemini 응답 없음: {result}")
     parts = candidates[0].get("content", {}).get("parts", [])
+    visible_text = "\n".join(
+        part.get("text", "") for part in parts if not part.get("thought")
+    )
     return _clean_response(
-        "\n".join(part.get("text", "") for part in parts),
+        visible_text,
         allow_korea_top5="<korea_investor_top5_by_subject_combined>" in context,
     )
