@@ -206,7 +206,7 @@ def _clean_response(text: str, allow_korea_top5: bool = True) -> str:
         lines.append(line.rstrip())
     text = "\n".join(lines).strip()
     text = re.sub(r"\n{3,}", "\n\n", text)
-    return text[:3900].rstrip()
+    return text.rstrip()
 
 
 def generate_report(context: str, region: str = "all") -> str:

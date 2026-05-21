@@ -24,6 +24,14 @@ def split_telegram(text: str, limit: int = 3900) -> list[str]:
     current = []
     current_len = 0
     for line in text.splitlines():
+        if len(line) + 1 > limit:
+            if current:
+                chunks.append("\n".join(current).strip())
+                current = []
+                current_len = 0
+            for start in range(0, len(line), limit):
+                chunks.append(line[start : start + limit].strip())
+            continue
         add_len = len(line) + 1
         if current and current_len + add_len > limit:
             chunks.append("\n".join(current).strip())
