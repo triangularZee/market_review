@@ -46,6 +46,7 @@ python main.py --region korea
 python main.py --region us
 python main.py --region other
 python main.py --region all --send-telegram
+python main.py --region korea --report-date 2026-05-21 --send-telegram
 ```
 
 For cron on a host that runs multiple Telegram bots, run from this repository

@@ -36,8 +36,25 @@ SECTION_START_RE = re.compile(
 )
 
 
-def build_prompt(context: str, region: str = "all") -> str:
-    date_title = datetime.now().strftime("%y.%m.%d")
+def _format_report_date(report_date: str | None = None) -> str:
+    if not report_date:
+        return datetime.now().strftime("%y.%m.%d")
+
+    value = report_date.strip()
+    for fmt in ("%Y-%m-%d", "%Y%m%d", "%y.%m.%d"):
+        try:
+            return datetime.strptime(value, fmt).strftime("%y.%m.%d")
+        except ValueError:
+            continue
+    raise ValueError("report_date must be YYYY-MM-DD, YYYYMMDD, or YY.MM.DD")
+
+
+def build_prompt(
+    context: str,
+    region: str = "all",
+    report_date: str | None = None,
+) -> str:
+    date_title = _format_report_date(report_date)
     title_map = {
         "korea": f"{date_title} 한국 마감시황",
         "us": f"{date_title} 미국 마감시황",
@@ -223,7 +240,11 @@ def _clean_response(text: str, allow_korea_top5: bool = True) -> str:
     return text.rstrip()
 
 
-def generate_report(context: str, region: str = "all") -> str:
+def generate_report(
+    context: str,
+    region: str = "all",
+    report_date: str | None = None,
+) -> str:
     if not GEMINI_API_KEY:
         raise ValueError("GOOGLE_AI_API_KEY 환경변수가 필요합니다.")
 
@@ -238,7 +259,7 @@ def generate_report(context: str, region: str = "all") -> str:
         }
 
     payload = {
-        "contents": [{"parts": [{"text": build_prompt(context, region)}]}],
+        "contents": [{"parts": [{"text": build_prompt(context, region, report_date)}]}],
         "generationConfig": generation_config,
     }
     resp = requests.post(

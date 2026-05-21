@@ -44,6 +44,10 @@ def main() -> None:
     parser.add_argument("--no-news", action="store_true", help="한국 뉴스 수집 제외")
     parser.add_argument("--send-telegram", action="store_true", help="Telegram으로 전송")
     parser.add_argument("--print-context", action="store_true", help="Gemini 입력 컨텍스트만 출력")
+    parser.add_argument(
+        "--report-date",
+        help="리포트 제목 기준일. YYYY-MM-DD, YYYYMMDD, YY.MM.DD 형식 지원",
+    )
     args = parser.parse_args()
 
     context = collect_context(
@@ -56,7 +60,7 @@ def main() -> None:
         print(context)
         return
 
-    report = generate_report(context, args.region)
+    report = generate_report(context, args.region, args.report_date)
     print("\n" + report)
 
     if args.send_telegram:
