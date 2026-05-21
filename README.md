@@ -12,23 +12,30 @@ Kiwoom is intentionally excluded.
 
 ## Environment
 
-Create `.env` or set environment variables:
+Keep secrets in `.env` or environment variables:
 
 ```text
 GOOGLE_AI_API_KEY=...
-GEMINI_MODEL=gemini-3.5-flash
-GEMINI_TEMPERATURE=0.35
-GEMINI_MAX_OUTPUT_TOKENS=4096
-GEMINI_THINKGLEVEL=high
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...
 ```
 
 Telegram variables are only required with `--send-telegram`.
-`GEMINI_THINKGLEVEL` is optional. For Gemini 3-series Flash models, use
-`minimal`, `low`, `medium`, or `high`; leave it blank to omit
-`thinkingConfig`. The previous `GEMINI_THINKING_LEVEL` name is still accepted
-for backward compatibility.
+
+Model and thinking defaults are managed in `gemini_reporter.py` and should flow
+to EC2 through `git pull`. Only add these to `.env` when you intentionally need
+a server-local override:
+
+```text
+GEMINI_MODEL=gemini-3.5-flash
+GEMINI_TEMPERATURE=0.35
+GEMINI_MAX_OUTPUT_TOKENS=4096
+GEMINI_THINKGLEVEL=high
+```
+
+`GEMINI_THINKGLEVEL` supports `minimal`, `low`, `medium`, or `high`; leave it
+blank to omit `thinkingConfig`. The previous `GEMINI_THINKING_LEVEL` name is
+still accepted for backward compatibility.
 
 ## Run
 
@@ -45,3 +52,20 @@ For cron on a host that runs multiple Telegram bots, run from this repository
 directory and keep this repo's `.env` populated. Non-empty values in `.env`
 override inherited cron/service environment variables, so the current bot token
 is used even if the host has an older `TELEGRAM_BOT_TOKEN` exported.
+
+## EC2 Sync Rule
+
+Treat GitHub as the source of truth for code on EC2. Edit code locally, commit,
+push, then let EC2 pull it. On EC2, edit only `.env`, crontab, and logs.
+
+Use this sync helper before manual runs or in cron if the EC2 workspace may have
+local tracked edits:
+
+```bash
+cd /home/ubuntu/market_review
+bash scripts/ec2_sync.sh
+```
+
+If tracked files were edited on EC2, the helper saves a patch under
+`.local_backups/`, restores tracked files to the GitHub version, then runs
+`git pull --ff-only origin main`. Backup files and logs are ignored by git.
