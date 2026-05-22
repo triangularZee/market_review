@@ -16,7 +16,10 @@ load_repo_env()
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
 GEMINI_API_KEY = os.environ.get("GOOGLE_AI_API_KEY", "")
 GEMINI_TEMPERATURE = float(os.environ.get("GEMINI_TEMPERATURE", "0.35"))
-GEMINI_MAX_OUTPUT_TOKENS = int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "4096"))
+GEMINI_MAX_OUTPUT_TOKENS = max(
+    8192,
+    int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "8192")),
+)
 GEMINI_THINKGLEVEL = os.environ.get(
     "GEMINI_THINKGLEVEL",
     os.environ.get("GEMINI_THINKING_LEVEL", "high"),
@@ -185,6 +188,7 @@ def _clean_response(text: str, allow_korea_top5: bool = True) -> str:
         "all numbers match",
         "let's structure",
         "raw data:",
+        "refine and format check",
         "스크립트가 성공적으로 완료",
         "아래는 오늘",
         "아래는 금일",
