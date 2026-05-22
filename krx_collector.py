@@ -196,11 +196,11 @@ def get_program_trading(market: str = "KOSPI", num_days: int = 20) -> pd.DataFra
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-            "Referer": "http://data.krx.co.kr/contents/MDC/MDI/mdiLoader",
+            "Referer": "https://data.krx.co.kr/contents/MDC/MDI/mdiLoader",
         }
 
         # OTP 생성
-        gen_url = "http://data.krx.co.kr/comm/fileDn/GenerateOTP/generate.cmd"
+        gen_url = "https://data.krx.co.kr/comm/fileDn/GenerateOTP/generate.cmd"
         gen_data = {
             "locale": "ko_KR",
             "mktId": market_id,
@@ -220,7 +220,7 @@ def get_program_trading(market: str = "KOSPI", num_days: int = 20) -> pd.DataFra
             raise ValueError("OTP 생성 실패")
 
         # CSV 다운로드
-        down_url = "http://data.krx.co.kr/comm/fileDn/download_csv/download.cmd"
+        down_url = "https://data.krx.co.kr/comm/fileDn/download_csv/download.cmd"
         resp = requests.post(
             down_url, data={"code": otp}, headers=headers, timeout=15
         )

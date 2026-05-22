@@ -171,9 +171,14 @@ def _collect_news() -> dict:
     }
 
 
-def collect(include_news: bool = True) -> dict:
+def collect(
+    include_news: bool = True,
+    global_indicators: pd.DataFrame | None = None,
+) -> dict:
     data = {
-        "global_indicators": fetch_global_indicators(),
+        "global_indicators": global_indicators
+        if global_indicators is not None
+        else fetch_global_indicators(),
         "markets": fetch_all_global_markets(),
         "news": {},
     }

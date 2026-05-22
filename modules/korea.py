@@ -220,9 +220,15 @@ def _top5_by_investor(investor: dict) -> list[str]:
     return lines
 
 
-def collect(include_krx: bool = True, include_news: bool = True) -> dict:
+def collect(
+    include_krx: bool = True,
+    include_news: bool = True,
+    global_indicators: pd.DataFrame | None = None,
+) -> dict:
     data = {
-        "global_indicators": fetch_global_indicators(),
+        "global_indicators": global_indicators
+        if global_indicators is not None
+        else fetch_global_indicators(),
         "sector_top10": fetch_sector_top10(),
         "exchange": fetch_exchange_rates(),
         "investor": {},

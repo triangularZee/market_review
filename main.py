@@ -12,22 +12,30 @@ import argparse
 
 from gemini_reporter import generate_report
 from modules import korea, other, us
+from naver_scraper import fetch_global_indicators
 
 
 def collect_context(region: str, include_krx: bool, include_news: bool) -> str:
     sections = []
+    global_indicators = fetch_global_indicators()
 
     if region in {"all", "korea"}:
         print("[1/3] 한국 데이터 수집")
-        sections.append(korea.summarize_for_prompt(korea.collect(include_krx, include_news)))
+        sections.append(
+            korea.summarize_for_prompt(
+                korea.collect(include_krx, include_news, global_indicators)
+            )
+        )
 
     if region in {"all", "us"}:
         print("[2/3] 미국 데이터 수집")
-        sections.append(us.summarize_for_prompt(us.collect(include_news)))
+        sections.append(us.summarize_for_prompt(us.collect(include_news, global_indicators)))
 
     if region in {"all", "other"}:
         print("[3/3] 그외 시장 데이터 수집")
-        sections.append(other.summarize_for_prompt(other.collect(include_news)))
+        sections.append(
+            other.summarize_for_prompt(other.collect(include_news, global_indicators))
+        )
 
     return "\n\n".join(sections)
 

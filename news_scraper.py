@@ -14,6 +14,7 @@ from urllib.parse import quote
 
 import requests
 import pandas as pd
+from bs4 import BeautifulSoup
 
 from config import NAVER_HEADERS
 
@@ -38,12 +39,14 @@ def fetch_naver_finance_news(category: str = "market") -> list[dict]:
     try:
         resp = requests.get(url, headers=NAVER_HEADERS, timeout=10)
         resp.raise_for_status()
-        html = resp.text
+        soup = BeautifulSoup(resp.text, "html.parser")
 
         articles = []
-        pattern = r'<dd class="articleSubject">\s*<a[^>]*href="([^"]*)"[^>]*title="([^"]*)"'
-        for match in re.finditer(pattern, html):
-            link, title = match.groups()
+        for anchor in soup.select("dd.articleSubject a[href]"):
+            link = anchor.get("href", "")
+            title = anchor.get("title") or anchor.get_text(" ", strip=True)
+            if not title:
+                continue
             articles.append({
                 "title": unescape(title).strip(),
                 "link": f"https://finance.naver.com{link}" if link.startswith("/") else link,

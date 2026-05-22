@@ -1,9 +1,11 @@
 """설정값 모음"""
-from datetime import date
+import os
+from datetime import date, timedelta
 
 # ── 기간 설정 ──
-START_DATE = "20251229"
+LOOKBACK_DAYS = int(os.environ.get("MARKET_REVIEW_LOOKBACK_DAYS", "20"))
 END_DATE = date.today().strftime("%Y%m%d")
+START_DATE = (date.today() - timedelta(days=LOOKBACK_DAYS)).strftime("%Y%m%d")
 
 # ── 네이버 증권 API ──
 NAVER_BASE = "https://stock.naver.com/api"

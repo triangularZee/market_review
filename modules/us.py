@@ -75,9 +75,14 @@ def _collect_news() -> dict:
     }
 
 
-def collect(include_news: bool = True) -> dict:
+def collect(
+    include_news: bool = True,
+    global_indicators: pd.DataFrame | None = None,
+) -> dict:
     data = {
-        "global_indicators": fetch_global_indicators(),
+        "global_indicators": global_indicators
+        if global_indicators is not None
+        else fetch_global_indicators(),
         "stock_all": fetch_market_top_stocks("USA", "ALL", "priceTop", 100),
         "stock_nyse": fetch_market_top_stocks("USA", "NYS", "priceTop", 100),
         "stock_nasdaq": fetch_market_top_stocks("USA", "NSQ", "priceTop", 100),

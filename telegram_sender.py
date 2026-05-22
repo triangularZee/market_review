@@ -3,20 +3,14 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
+import time
 
 import requests
 
+from env_loader import load_repo_env
 
-_ENV_PATH = Path(__file__).resolve().parent / ".env"
-if _ENV_PATH.exists():
-    for line in _ENV_PATH.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            key, _, value = line.partition("=")
-            value = value.strip()
-            if value:
-                os.environ[key.strip()] = value
+
+load_repo_env()
 
 
 def split_telegram(text: str, limit: int = 3900) -> list[str]:
@@ -45,7 +39,7 @@ def split_telegram(text: str, limit: int = 3900) -> list[str]:
     return chunks
 
 
-def send_telegram(text: str) -> None:
+def send_telegram(text: str, retries: int = 2) -> None:
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
     if not token or not chat_id:
@@ -53,13 +47,24 @@ def send_telegram(text: str) -> None:
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     for chunk in split_telegram(text):
-        resp = requests.post(
-            url,
-            json={
-                "chat_id": chat_id,
-                "text": chunk,
-                "disable_web_page_preview": True,
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
+        last_error = None
+        for attempt in range(retries + 1):
+            try:
+                resp = requests.post(
+                    url,
+                    json={
+                        "chat_id": chat_id,
+                        "text": chunk,
+                        "disable_web_page_preview": True,
+                    },
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                last_error = None
+                break
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt < retries:
+                    time.sleep(1.5 * (attempt + 1))
+        if last_error is not None:
+            raise last_error

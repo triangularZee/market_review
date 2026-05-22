@@ -5,19 +5,13 @@ from __future__ import annotations
 import os
 import re
 from datetime import datetime
-from pathlib import Path
 
 import requests
 
+from env_loader import load_repo_env
 
-_ENV_PATH = Path(__file__).resolve().parent / ".env"
-if _ENV_PATH.exists():
-    for line in _ENV_PATH.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            key, _, value = line.partition("=")
-            os.environ.setdefault(key.strip(), value.strip())
 
+load_repo_env()
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
 GEMINI_API_KEY = os.environ.get("GOOGLE_AI_API_KEY", "")

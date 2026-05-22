@@ -68,5 +68,17 @@ bash scripts/ec2_sync.sh
 ```
 
 If tracked files were edited on EC2, the helper saves a patch under
-`.local_backups/`, restores tracked files to the GitHub version, then runs
-`git pull --ff-only origin main`. Backup files and logs are ignored by git.
+`.local_backups/` and stops before overwriting anything. To explicitly restore
+tracked files to the GitHub version and then pull, run:
+
+```bash
+bash scripts/ec2_sync.sh --force-restore
+```
+
+Backup files and logs are ignored by git.
+
+## Test
+
+```bash
+python -m unittest discover -s tests -v
+```
