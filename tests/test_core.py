@@ -4,9 +4,37 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import requests
+
 import env_loader
+import gemini_reporter
 from gemini_reporter import _clean_response, _format_report_date
 from telegram_sender import split_telegram
+
+
+class FakeGeminiResponse:
+    def __init__(self, status_code: int, text: str = "26.05.21 한국 마감시황"):
+        self.status_code = status_code
+        self._text = text
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.HTTPError(response=self)
+
+    def json(self):
+        return {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": self._text,
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
 
 
 class CoreHelpersTest(unittest.TestCase):
@@ -53,6 +81,50 @@ Let's structure the output exactly as requested.
                 finally:
                     os.environ.pop("SAMPLE_KEY", None)
                     os.environ.pop("EMPTY_VALUE", None)
+
+    def test_gemini_retries_retryable_status(self):
+        with (
+            patch.object(gemini_reporter, "GEMINI_API_KEY", "key"),
+            patch.object(gemini_reporter, "GEMINI_MODEL", "gemini-3.5-flash"),
+            patch.object(gemini_reporter, "GEMINI_FALLBACK_MODELS", []),
+            patch.object(gemini_reporter, "GEMINI_MAX_RETRIES", 1),
+            patch.object(gemini_reporter, "GEMINI_RETRY_SLEEP_SECONDS", 0),
+            patch.object(
+                gemini_reporter.requests,
+                "post",
+                side_effect=[
+                    FakeGeminiResponse(503),
+                    FakeGeminiResponse(200),
+                ],
+            ) as post,
+            patch.object(gemini_reporter.time, "sleep"),
+        ):
+            report = gemini_reporter.generate_report("context", "korea", "2026-05-21")
+
+        self.assertIn("26.05.21", report)
+        self.assertEqual(post.call_count, 2)
+
+    def test_gemini_falls_back_on_model_404(self):
+        with (
+            patch.object(gemini_reporter, "GEMINI_API_KEY", "key"),
+            patch.object(gemini_reporter, "GEMINI_MODEL", "gemini-3.5-flash"),
+            patch.object(gemini_reporter, "GEMINI_FALLBACK_MODELS", ["gemini-2.5-flash"]),
+            patch.object(gemini_reporter, "GEMINI_MAX_RETRIES", 0),
+            patch.object(
+                gemini_reporter.requests,
+                "post",
+                side_effect=[
+                    FakeGeminiResponse(404),
+                    FakeGeminiResponse(200),
+                ],
+            ) as post,
+        ):
+            report = gemini_reporter.generate_report("context", "korea", "2026-05-21")
+
+        self.assertIn("26.05.21", report)
+        self.assertEqual(post.call_count, 2)
+        fallback_payload = post.call_args_list[1].kwargs["json"]
+        self.assertNotIn("thinkingConfig", fallback_payload["generationConfig"])
 
 
 if __name__ == "__main__":

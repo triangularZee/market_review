@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from datetime import datetime
 
 import requests
@@ -14,16 +15,24 @@ from env_loader import load_repo_env
 load_repo_env()
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
+GEMINI_FALLBACK_MODELS = [
+    model.strip()
+    for model in os.environ.get("GEMINI_FALLBACK_MODELS", "gemini-2.5-flash").split(",")
+    if model.strip()
+]
 GEMINI_API_KEY = os.environ.get("GOOGLE_AI_API_KEY", "")
 GEMINI_TEMPERATURE = float(os.environ.get("GEMINI_TEMPERATURE", "0.35"))
 GEMINI_MAX_OUTPUT_TOKENS = max(
     8192,
     int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "8192")),
 )
+GEMINI_MAX_RETRIES = int(os.environ.get("GEMINI_MAX_RETRIES", "2"))
+GEMINI_RETRY_SLEEP_SECONDS = float(os.environ.get("GEMINI_RETRY_SLEEP_SECONDS", "2"))
 GEMINI_THINKGLEVEL = os.environ.get(
     "GEMINI_THINKGLEVEL",
     os.environ.get("GEMINI_THINKING_LEVEL", "high"),
 ).strip()
+GEMINI_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
 REPORT_START_RE = re.compile(
     r"(?m)^\s*\d{2}\.\d{2}\.\d{2}\s+(?:한국|미국|아시아|글로벌)\s+마감시황\s*$"
@@ -44,6 +53,72 @@ def _format_report_date(report_date: str | None = None) -> str:
         except ValueError:
             continue
     raise ValueError("report_date must be YYYY-MM-DD, YYYYMMDD, or YY.MM.DD")
+
+
+def _models_to_try() -> list[str]:
+    models = [GEMINI_MODEL]
+    for model in GEMINI_FALLBACK_MODELS:
+        if model not in models:
+            models.append(model)
+    return models
+
+
+def _generation_config_for_model(model: str) -> dict:
+    generation_config = {
+        "temperature": GEMINI_TEMPERATURE,
+        "maxOutputTokens": GEMINI_MAX_OUTPUT_TOKENS,
+    }
+    if GEMINI_THINKGLEVEL and model.startswith("gemini-3"):
+        generation_config["thinkingConfig"] = {
+            "thinkingLevel": GEMINI_THINKGLEVEL,
+        }
+    return generation_config
+
+
+def _request_gemini(payload: dict, model: str) -> dict:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    last_error: Exception | None = None
+
+    for attempt in range(GEMINI_MAX_RETRIES + 1):
+        try:
+            resp = requests.post(
+                url,
+                json=payload,
+                headers={"x-goog-api-key": GEMINI_API_KEY},
+                timeout=120,
+            )
+            if (
+                resp.status_code in GEMINI_RETRY_STATUS_CODES
+                and attempt < GEMINI_MAX_RETRIES
+            ):
+                wait = GEMINI_RETRY_SLEEP_SECONDS * (attempt + 1)
+                print(
+                    f"[gemini] {model} status={resp.status_code}; retry "
+                    f"{attempt + 1}/{GEMINI_MAX_RETRIES} after {wait:.1f}s"
+                )
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            return resp.json()
+        except requests.RequestException as exc:
+            last_error = exc
+            status = exc.response.status_code if exc.response is not None else None
+            if status == 404:
+                raise
+            if (
+                (status in GEMINI_RETRY_STATUS_CODES or status is None)
+                and attempt < GEMINI_MAX_RETRIES
+            ):
+                wait = GEMINI_RETRY_SLEEP_SECONDS * (attempt + 1)
+                print(
+                    f"[gemini] {model} request error status={status}; retry "
+                    f"{attempt + 1}/{GEMINI_MAX_RETRIES} after {wait:.1f}s"
+                )
+                time.sleep(wait)
+                continue
+            raise
+
+    raise RuntimeError(f"Gemini request failed for {model}") from last_error
 
 
 def build_prompt(
@@ -246,37 +321,49 @@ def generate_report(
     if not GEMINI_API_KEY:
         raise ValueError("GOOGLE_AI_API_KEY 환경변수가 필요합니다.")
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
-    generation_config = {
-        "temperature": GEMINI_TEMPERATURE,
-        "maxOutputTokens": GEMINI_MAX_OUTPUT_TOKENS,
-    }
-    if GEMINI_THINKGLEVEL:
-        generation_config["thinkingConfig"] = {
-            "thinkingLevel": GEMINI_THINKGLEVEL,
+    prompt = build_prompt(context, region, report_date)
+    last_error: Exception | None = None
+    models = _models_to_try()
+
+    for index, model in enumerate(models):
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": _generation_config_for_model(model),
         }
+        try:
+            result = _request_gemini(payload, model)
+            candidates = result.get("candidates") or []
+            if not candidates:
+                raise ValueError(f"Gemini 응답 없음: {result}")
+            parts = candidates[0].get("content", {}).get("parts", [])
+            visible_text = "\n".join(
+                part.get("text", "") for part in parts if not part.get("thought")
+            )
+            return _clean_response(
+                visible_text,
+                allow_korea_top5="<korea_investor_top5_by_subject_combined>" in context,
+            )
+        except requests.HTTPError as exc:
+            last_error = exc
+            status = exc.response.status_code if exc.response is not None else None
+            if status == 404 and index + 1 < len(models):
+                print(f"[gemini] {model} returned 404; falling back to {models[index + 1]}")
+                continue
+            if status in GEMINI_RETRY_STATUS_CODES and index + 1 < len(models):
+                print(
+                    f"[gemini] {model} failed after retries status={status}; "
+                    f"falling back to {models[index + 1]}"
+                )
+                continue
+            raise
+        except requests.RequestException as exc:
+            last_error = exc
+            if index + 1 < len(models):
+                print(
+                    f"[gemini] {model} request failed after retries; "
+                    f"falling back to {models[index + 1]}"
+                )
+                continue
+            raise
 
-    payload = {
-        "contents": [{"parts": [{"text": build_prompt(context, region, report_date)}]}],
-        "generationConfig": generation_config,
-    }
-    resp = requests.post(
-        url,
-        json=payload,
-        headers={"x-goog-api-key": GEMINI_API_KEY},
-        timeout=120,
-    )
-    resp.raise_for_status()
-
-    result = resp.json()
-    candidates = result.get("candidates") or []
-    if not candidates:
-        raise ValueError(f"Gemini 응답 없음: {result}")
-    parts = candidates[0].get("content", {}).get("parts", [])
-    visible_text = "\n".join(
-        part.get("text", "") for part in parts if not part.get("thought")
-    )
-    return _clean_response(
-        visible_text,
-        allow_korea_top5="<korea_investor_top5_by_subject_combined>" in context,
-    )
+    raise RuntimeError("Gemini report generation failed for all configured models") from last_error
