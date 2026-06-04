@@ -126,6 +126,12 @@ Let's structure the output exactly as requested.
         fallback_payload = post.call_args_list[1].kwargs["json"]
         self.assertNotIn("thinkingConfig", fallback_payload["generationConfig"])
 
+    def test_gemini_35_uses_minimal_thinking(self):
+        with patch.object(gemini_reporter, "GEMINI_THINKGLEVEL", "minimal"):
+            config = gemini_reporter._generation_config_for_model("gemini-3.5-flash")
+
+        self.assertEqual(config["thinkingConfig"], {"thinkingLevel": "minimal"})
+
 
 if __name__ == "__main__":
     unittest.main()
