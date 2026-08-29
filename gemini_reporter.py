@@ -30,7 +30,7 @@ GEMINI_MAX_RETRIES = int(os.environ.get("GEMINI_MAX_RETRIES", "2"))
 GEMINI_RETRY_SLEEP_SECONDS = float(os.environ.get("GEMINI_RETRY_SLEEP_SECONDS", "2"))
 GEMINI_THINKGLEVEL = os.environ.get(
     "GEMINI_THINKGLEVEL",
-    os.environ.get("GEMINI_THINKING_LEVEL", "minimal"),
+    os.environ.get("GEMINI_THINKING_LEVEL", "medium"),
 ).strip()
 GEMINI_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 
