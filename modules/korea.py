@@ -224,6 +224,7 @@ def collect(
     include_krx: bool = True,
     include_news: bool = True,
     global_indicators: pd.DataFrame | None = None,
+    report_date: str | None = None,
 ) -> dict:
     data = {
         "global_indicators": global_indicators
@@ -249,7 +250,7 @@ def collect(
         try:
             from news_scraper import collect_all_news
 
-            data["news"] = collect_all_news()
+            data["news"] = collect_all_news(report_date)
         except Exception as exc:
             data["news_error"] = str(exc)
 
@@ -300,7 +301,9 @@ def summarize_for_prompt(data: dict, max_rows: int = 12) -> str:
             lines.append(f"\n<news:{section}>")
             for article in articles[:8]:
                 source = article.get("source", "")
-                suffix = f" [{source}]" if source else ""
+                published = article.get("published_date", "")
+                metadata = ", ".join(value for value in [published, source] if value)
+                suffix = f" [{metadata}]" if metadata else ""
                 lines.append(f"- {article.get('title', '')}{suffix}")
 
     topics = news.get("topics") or {}
@@ -309,7 +312,9 @@ def summarize_for_prompt(data: dict, max_rows: int = 12) -> str:
             continue
         lines.append(f"\n<topic:{topic}>")
         for article in articles[:4]:
-            lines.append(f"- {article.get('title', '')}")
+            published = article.get("published_date", "")
+            suffix = f" [{published}]" if published else ""
+            lines.append(f"- {article.get('title', '')}{suffix}")
 
     for err_key in ["news_error"]:
         if data.get(err_key):

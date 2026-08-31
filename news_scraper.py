@@ -9,7 +9,8 @@
 import re
 import xml.etree.ElementTree as ET
 from html import unescape
-from datetime import datetime
+from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
 from urllib.parse import quote
 
 import requests
@@ -88,10 +89,39 @@ def fetch_naver_stock_news_api() -> list[dict]:
 # 2. Google News RSS (한국 경제/증시 뉴스)
 # ═══════════════════════════════════════════════════════════
 
-def fetch_google_news_rss(query: str, num: int = 10) -> list[dict]:
+def _parse_report_date(report_date: str | None) -> datetime | None:
+    if not report_date:
+        return None
+    for fmt in ("%Y-%m-%d", "%Y%m%d", "%y.%m.%d"):
+        try:
+            return datetime.strptime(report_date.strip(), fmt)
+        except ValueError:
+            continue
+    raise ValueError("report_date must be YYYY-MM-DD, YYYYMMDD, or YY.MM.DD")
+
+
+def _dated_news_query(query: str, report_date: str | None = None) -> str:
+    target = _parse_report_date(report_date)
+    if target is None:
+        return f"({query}) when:3d"
+    start = (target - timedelta(days=1)).strftime("%Y-%m-%d")
+    end = (target + timedelta(days=1)).strftime("%Y-%m-%d")
+    return f"({query}) after:{start} before:{end}"
+
+
+def fetch_google_news_rss(
+    query: str,
+    num: int = 10,
+    report_date: str | None = None,
+    locale: str = "ko-KR",
+) -> list[dict]:
     """Google News RSS로 특정 주제 뉴스 수집"""
-    encoded = quote(query)
-    url = f"https://news.google.com/rss/search?q={encoded}&hl=ko&gl=KR&ceid=KR:ko"
+    encoded = quote(_dated_news_query(query, report_date))
+    if locale == "en-US":
+        locale_query = "hl=en-US&gl=US&ceid=US:en"
+    else:
+        locale_query = "hl=ko&gl=KR&ceid=KR:ko"
+    url = f"https://news.google.com/rss/search?q={encoded}&{locale_query}"
 
     try:
         resp = requests.get(url, headers=NAVER_HEADERS, timeout=10)
@@ -104,11 +134,16 @@ def fetch_google_news_rss(query: str, num: int = 10) -> list[dict]:
             link = item.findtext("link", "")
             pub_date = item.findtext("pubDate", "")
             source = item.findtext("source", "")
+            try:
+                published_date = parsedate_to_datetime(pub_date).date().isoformat()
+            except (TypeError, ValueError):
+                published_date = ""
             articles.append({
                 "title": title,
                 "link": link,
                 "source": source,
                 "date": pub_date,
+                "published_date": published_date,
                 "category": query,
             })
         return articles
@@ -136,7 +171,11 @@ SEARCH_TOPICS = {
 }
 
 
-def fetch_all_topic_news(topics: dict = None) -> dict[str, list[dict]]:
+def fetch_all_topic_news(
+    topics: dict | None = None,
+    report_date: str | None = None,
+    locale: str = "ko-KR",
+) -> dict[str, list[dict]]:
     """모든 주제에 대해 뉴스를 수집"""
     if topics is None:
         topics = SEARCH_TOPICS
@@ -144,7 +183,12 @@ def fetch_all_topic_news(topics: dict = None) -> dict[str, list[dict]]:
     results = {}
     for key, query in topics.items():
         print(f"  뉴스 수집: [{key}] {query}...")
-        articles = fetch_google_news_rss(query, num=8)
+        articles = fetch_google_news_rss(
+            query,
+            num=8,
+            report_date=report_date,
+            locale=locale,
+        )
         results[key] = articles
 
     return results
@@ -202,7 +246,7 @@ def generate_news_context(topic_news: dict) -> dict[str, str]:
 # 5. 통합 수집
 # ═══════════════════════════════════════════════════════════
 
-def collect_all_news() -> dict:
+def collect_all_news(report_date: str | None = None) -> dict:
     """전체 뉴스 및 배경 정보 수집"""
     print("\n[뉴스] 시장 동향 및 배경 정보 수집 중...")
 
@@ -224,7 +268,7 @@ def collect_all_news() -> dict:
 
     # 주제별 배경 뉴스 (Google News RSS)
     print("  주제별 배경 뉴스 수집 중...")
-    result["topics"] = fetch_all_topic_news()
+    result["topics"] = fetch_all_topic_news(report_date=report_date)
 
     # 컨텍스트 생성
     print("  배경 컨텍스트 생성 중...")

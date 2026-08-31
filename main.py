@@ -15,7 +15,12 @@ from modules import korea, other, us
 from naver_scraper import fetch_global_indicators
 
 
-def collect_context(region: str, include_krx: bool, include_news: bool) -> str:
+def collect_context(
+    region: str,
+    include_krx: bool,
+    include_news: bool,
+    report_date: str | None = None,
+) -> str:
     sections = []
     global_indicators = fetch_global_indicators()
 
@@ -23,18 +28,22 @@ def collect_context(region: str, include_krx: bool, include_news: bool) -> str:
         print("[1/3] 한국 데이터 수집")
         sections.append(
             korea.summarize_for_prompt(
-                korea.collect(include_krx, include_news, global_indicators)
+                korea.collect(include_krx, include_news, global_indicators, report_date)
             )
         )
 
     if region in {"all", "us"}:
         print("[2/3] 미국 데이터 수집")
-        sections.append(us.summarize_for_prompt(us.collect(include_news, global_indicators)))
+        sections.append(
+            us.summarize_for_prompt(us.collect(include_news, global_indicators, report_date))
+        )
 
     if region in {"all", "other"}:
         print("[3/3] 그외 시장 데이터 수집")
         sections.append(
-            other.summarize_for_prompt(other.collect(include_news, global_indicators))
+            other.summarize_for_prompt(
+                other.collect(include_news, global_indicators, report_date)
+            )
         )
 
     return "\n\n".join(sections)
@@ -62,6 +71,7 @@ def main() -> None:
         region=args.region,
         include_krx=not args.no_krx,
         include_news=not args.no_news,
+        report_date=args.report_date,
     )
 
     if args.print_context:

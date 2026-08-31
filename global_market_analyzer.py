@@ -172,6 +172,9 @@ def fetch_taiwan_market_data(top_n: int = 50) -> tuple[pd.DataFrame, dict]:
                     change = f"-{change}"
                 taiex = {
                     "name": "TAIEX",
+                    "date": datetime.strptime(str(data.get("date", "")), "%Y%m%d").date().isoformat()
+                    if data.get("date")
+                    else "",
                     "value": str(row[1]).replace(",", ""),
                     "change": change,
                     "change_pct": str(row[4]).replace("%", "").strip(),

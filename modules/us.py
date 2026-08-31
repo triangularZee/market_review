@@ -11,13 +11,13 @@ from us_market_analyzer import fetch_us_etf_top
 
 
 US_NEWS_TOPICS = {
-    "US_market": "S&P 500 Nasdaq market today earnings guidance",
-    "AI_semis": "Nvidia AMD Micron Broadcom AI data center semiconductor news",
-    "mega_tech": "Apple Microsoft Amazon Alphabet Meta earnings AI capex",
-    "rates_macro": "Federal Reserve rate Treasury yield dollar market",
-    "energy": "oil price energy stocks OPEC geopolitical risk",
-    "healthcare": "US healthcare biotech pharma FDA earnings",
-    "consumer": "US consumer spending retail restaurants travel earnings",
+    "US_market": '("US stocks" OR "S&P 500" OR Nasdaq OR Dow) (close OR rises OR falls)',
+    "AI_semis": '(Nvidia OR AMD OR Micron OR Broadcom) (stocks OR earnings OR guidance)',
+    "mega_tech": '(Apple OR Microsoft OR Amazon OR Alphabet OR Meta) (stocks OR earnings OR guidance)',
+    "rates_macro": '("US stocks" OR "S&P 500") (Federal Reserve OR Treasury OR dollar)',
+    "energy": '("US energy stocks" OR Exxon OR Chevron) (oil OR OPEC OR earnings)',
+    "healthcare": '("US healthcare stocks" OR biotech OR pharma) (FDA OR earnings)',
+    "consumer": '("US consumer stocks" OR retail OR restaurants OR travel) earnings',
 }
 
 
@@ -65,10 +65,10 @@ def _index_line(indicators: pd.DataFrame) -> str:
     return f"- 주요 지수: {' | '.join(rows)}"
 
 
-def _collect_news() -> dict:
+def _collect_news(report_date: str | None = None) -> dict:
     from news_scraper import fetch_all_topic_news, generate_news_context
 
-    topics = fetch_all_topic_news(US_NEWS_TOPICS)
+    topics = fetch_all_topic_news(US_NEWS_TOPICS, report_date, locale="en-US")
     return {
         "topics": topics,
         "context": generate_news_context(topics),
@@ -78,6 +78,7 @@ def _collect_news() -> dict:
 def collect(
     include_news: bool = True,
     global_indicators: pd.DataFrame | None = None,
+    report_date: str | None = None,
 ) -> dict:
     data = {
         "global_indicators": global_indicators
@@ -91,7 +92,7 @@ def collect(
     }
     if include_news:
         try:
-            data["news"] = _collect_news()
+            data["news"] = _collect_news(report_date)
         except Exception as exc:
             data["news_error"] = str(exc)
     return data
@@ -149,7 +150,9 @@ def summarize_for_prompt(data: dict, max_rows: int = 18) -> str:
         lines.append(f"\n<news:{topic}>")
         for article in articles[:5]:
             source = article.get("source", "")
-            suffix = f" [{source}]" if source else ""
+            published = article.get("published_date", "")
+            metadata = ", ".join(value for value in [published, source] if value)
+            suffix = f" [{metadata}]" if metadata else ""
             lines.append(f"- {article.get('title', '')}{suffix}")
 
     if data.get("news_error"):

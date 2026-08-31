@@ -10,6 +10,9 @@ import env_loader
 import gemini_reporter
 from global_market_analyzer import _signed_taiwan_change, _valid_taiwan_ranking
 from gemini_reporter import _clean_response, _format_report_date
+from news_scraper import _dated_news_query
+from modules.other import _news_matches_market
+from modules.other import summarize_for_prompt as summarize_other
 from telegram_sender import split_telegram
 
 
@@ -149,6 +152,45 @@ Let's structure the output exactly as requested.
     def test_taiwan_change_applies_twse_html_sign(self):
         self.assertEqual(_signed_taiwan_change("<p style= color:green>-</p>", "15.00"), "-15.00")
         self.assertEqual(_signed_taiwan_change("<p style= color:red>+</p>", "3.00"), "3.00")
+
+    def test_news_query_uses_recent_window(self):
+        self.assertEqual(_dated_news_query("Taiwan stocks"), "(Taiwan stocks) when:3d")
+
+    def test_news_query_uses_report_date_window(self):
+        self.assertEqual(
+            _dated_news_query("Taiwan stocks", "2026-08-28"),
+            "(Taiwan stocks) after:2026-08-27 before:2026-08-29",
+        )
+
+    def test_market_news_rejects_opposite_direction(self):
+        terms = ["taiwan", "taiex"]
+        self.assertFalse(_news_matches_market("Taiwan stocks rise at close", terms, -1))
+        self.assertTrue(_news_matches_market("Taiwan stocks fall at close", terms, -1))
+
+    def test_market_news_rejects_low_signal_page(self):
+        self.assertFalse(
+            _news_matches_market("TSMC Stock Price — TSMC Chart", ["tsmc"], -1)
+        )
+
+    def test_market_news_rejects_wrong_trading_date(self):
+        self.assertFalse(
+            _news_matches_market(
+                "Taiwan stocks fall at close",
+                ["taiwan"],
+                -1,
+                published_date="2026-08-31",
+                market_date="2026-08-28",
+            )
+        )
+
+    def test_other_context_marks_missing_news_evidence(self):
+        import pandas as pd
+
+        context = summarize_other(
+            {"global_indicators": pd.DataFrame(), "markets": {}, "news": {}}
+        )
+
+        self.assertIn("<news_evidence:대만> 없음", context)
 
 
 if __name__ == "__main__":
