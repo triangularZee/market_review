@@ -8,6 +8,7 @@ import requests
 
 import env_loader
 import gemini_reporter
+from global_market_analyzer import _signed_taiwan_change, _valid_taiwan_ranking
 from gemini_reporter import _clean_response, _format_report_date
 from telegram_sender import split_telegram
 
@@ -131,6 +132,23 @@ Let's structure the output exactly as requested.
             config = gemini_reporter._generation_config_for_model("gemini-3.5-flash")
 
         self.assertEqual(config["thinkingConfig"], {"thinkingLevel": "medium"})
+
+    def test_invalid_cnyes_taiwan_ranking_triggers_fallback(self):
+        import pandas as pd
+
+        ranking = pd.DataFrame(
+            {
+                "종목명": [float("nan")],
+                "거래대금(TWD)": [float("nan")],
+                "등락": [float("nan")],
+            }
+        )
+
+        self.assertFalse(_valid_taiwan_ranking(ranking))
+
+    def test_taiwan_change_applies_twse_html_sign(self):
+        self.assertEqual(_signed_taiwan_change("<p style= color:green>-</p>", "15.00"), "-15.00")
+        self.assertEqual(_signed_taiwan_change("<p style= color:red>+</p>", "3.00"), "3.00")
 
 
 if __name__ == "__main__":

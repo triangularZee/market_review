@@ -63,6 +63,10 @@ TAIWAN_ENGLISH_NAMES = {
     "技嘉": "Gigabyte",
     "世芯-KY": "Alchip",
     "聯亞": "LandMark Optoelectronics",
+    "南亞": "Nan Ya Plastics",
+    "大立光": "Largan Precision",
+    "景碩": "Kinsus Interconnect",
+    "南電": "Nan Ya PCB",
 }
 
 

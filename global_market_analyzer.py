@@ -198,10 +198,38 @@ def fetch_taiwan_market_data(top_n: int = 50) -> tuple[pd.DataFrame, dict]:
             ranking = ranking.rename(columns=rename)
     except Exception as e:
         print(f"  [대만] 거래대금 순위 수집 실패: {e}")
+
+    if not _valid_taiwan_ranking(ranking):
+        print("  [대만] Cnyes 순위 데이터가 유효하지 않아 TWSE 공식 데이터로 대체합니다.")
         ranking = _fetch_taiwan_twse_ranking(top_n)
 
     ranking.attrs["taiex"] = taiex
     return ranking, taiex
+
+
+def _valid_taiwan_ranking(df: pd.DataFrame) -> bool:
+    """Return whether a Taiwan ranking can produce the Telegram TOP10 line."""
+    required = {"종목명", "거래대금(TWD)", "등락"}
+    if not isinstance(df, pd.DataFrame) or df.empty or not required.issubset(df.columns):
+        return False
+
+    names = df["종목명"].astype(str).str.strip().replace({"nan": "", "None": ""})
+    amounts = pd.to_numeric(
+        df["거래대금(TWD)"].astype(str).str.replace(",", "", regex=False),
+        errors="coerce",
+    )
+    changes = df["등락"].astype(str).str.strip().replace({"nan": "", "None": ""})
+    return bool(((names != "") & amounts.gt(0) & (changes != "")).any())
+
+
+def _signed_taiwan_change(sign, change) -> str:
+    text = str(change or "").replace(",", "").strip()
+    sign_text = str(sign or "").lower()
+    if text in {"", "--"}:
+        return text
+    if ("-" in sign_text or "green" in sign_text) and not text.startswith("-"):
+        return f"-{text}"
+    return text
 
 
 def _fetch_taiwan_twse_ranking(top_n: int = 50) -> pd.DataFrame:
@@ -226,6 +254,11 @@ def _fetch_taiwan_twse_ranking(top_n: int = 50) -> pd.DataFrame:
         fields = target["fields"]
         rows = target.get("data", [])
         df = pd.DataFrame(rows, columns=fields)
+        if "漲跌(+/-)" in df.columns and "漲跌價差" in df.columns:
+            df["漲跌價差"] = [
+                _signed_taiwan_change(sign, change)
+                for sign, change in zip(df["漲跌(+/-)"], df["漲跌價差"])
+            ]
         rename = {
             "證券代號": "종목코드",
             "證券名稱": "종목명",
@@ -239,7 +272,8 @@ def _fetch_taiwan_twse_ranking(top_n: int = 50) -> pd.DataFrame:
             df["_거래대금숫자"] = pd.to_numeric(
                 df["거래대금(TWD)"].astype(str).str.replace(",", "", regex=False),
                 errors="coerce",
-            ).fillna(0)
+            )
+            df = df[df["_거래대금숫자"].gt(0) & df["종목명"].astype(str).str.strip().ne("")]
             df = df.sort_values("_거래대금숫자", ascending=False).head(top_n)
             df = df.drop(columns=["_거래대금숫자"])
         return df.reset_index(drop=True)
