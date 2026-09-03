@@ -112,7 +112,7 @@ Let's structure the output exactly as requested.
         with (
             patch.object(gemini_reporter, "GEMINI_API_KEY", "key"),
             patch.object(gemini_reporter, "GEMINI_MODEL", "gemini-3.8-flash"),
-            patch.object(gemini_reporter, "GEMINI_FALLBACK_MODELS", ["gemini-2.5-flash"]),
+            patch.object(gemini_reporter, "GEMINI_FALLBACK_MODELS", ["gemini-3.5-flash"]),
             patch.object(gemini_reporter, "GEMINI_MAX_RETRIES", 0),
             patch.object(
                 gemini_reporter.requests,
@@ -128,7 +128,11 @@ Let's structure the output exactly as requested.
         self.assertIn("26.05.21", report)
         self.assertEqual(post.call_count, 2)
         fallback_payload = post.call_args_list[1].kwargs["json"]
-        self.assertNotIn("thinkingConfig", fallback_payload["generationConfig"])
+        self.assertEqual(
+            fallback_payload["generationConfig"]["thinkingConfig"],
+            {"thinkingLevel": "medium"},
+        )
+        self.assertNotIn("temperature", fallback_payload["generationConfig"])
 
     def test_gemini_38_uses_medium_thinking_without_temperature(self):
         with patch.object(gemini_reporter, "GEMINI_THINKGLEVEL", "medium"):
