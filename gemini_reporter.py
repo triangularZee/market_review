@@ -14,7 +14,7 @@ from env_loader import load_repo_env
 
 load_repo_env()
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
 GEMINI_FALLBACK_MODELS = [
     model.strip()
     for model in os.environ.get("GEMINI_FALLBACK_MODELS", "gemini-2.5-flash").split(",")
@@ -65,9 +65,10 @@ def _models_to_try() -> list[str]:
 
 def _generation_config_for_model(model: str) -> dict:
     generation_config = {
-        "temperature": GEMINI_TEMPERATURE,
         "maxOutputTokens": GEMINI_MAX_OUTPUT_TOKENS,
     }
+    if not model.startswith("gemini-3"):
+        generation_config["temperature"] = GEMINI_TEMPERATURE
     if GEMINI_THINKGLEVEL and model.startswith("gemini-3"):
         generation_config["thinkingConfig"] = {
             "thinkingLevel": GEMINI_THINKGLEVEL,

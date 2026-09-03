@@ -89,7 +89,7 @@ Let's structure the output exactly as requested.
     def test_gemini_retries_retryable_status(self):
         with (
             patch.object(gemini_reporter, "GEMINI_API_KEY", "key"),
-            patch.object(gemini_reporter, "GEMINI_MODEL", "gemini-3.5-flash"),
+            patch.object(gemini_reporter, "GEMINI_MODEL", "gemini-3.8-flash"),
             patch.object(gemini_reporter, "GEMINI_FALLBACK_MODELS", []),
             patch.object(gemini_reporter, "GEMINI_MAX_RETRIES", 1),
             patch.object(gemini_reporter, "GEMINI_RETRY_SLEEP_SECONDS", 0),
@@ -111,7 +111,7 @@ Let's structure the output exactly as requested.
     def test_gemini_falls_back_on_model_404(self):
         with (
             patch.object(gemini_reporter, "GEMINI_API_KEY", "key"),
-            patch.object(gemini_reporter, "GEMINI_MODEL", "gemini-3.5-flash"),
+            patch.object(gemini_reporter, "GEMINI_MODEL", "gemini-3.8-flash"),
             patch.object(gemini_reporter, "GEMINI_FALLBACK_MODELS", ["gemini-2.5-flash"]),
             patch.object(gemini_reporter, "GEMINI_MAX_RETRIES", 0),
             patch.object(
@@ -130,11 +130,12 @@ Let's structure the output exactly as requested.
         fallback_payload = post.call_args_list[1].kwargs["json"]
         self.assertNotIn("thinkingConfig", fallback_payload["generationConfig"])
 
-    def test_gemini_35_uses_medium_thinking(self):
+    def test_gemini_38_uses_medium_thinking_without_temperature(self):
         with patch.object(gemini_reporter, "GEMINI_THINKGLEVEL", "medium"):
-            config = gemini_reporter._generation_config_for_model("gemini-3.5-flash")
+            config = gemini_reporter._generation_config_for_model("gemini-3.8-flash")
 
         self.assertEqual(config["thinkingConfig"], {"thinkingLevel": "medium"})
+        self.assertNotIn("temperature", config)
 
     def test_invalid_cnyes_taiwan_ranking_triggers_fallback(self):
         import pandas as pd

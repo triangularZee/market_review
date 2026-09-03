@@ -27,7 +27,7 @@ to EC2 through `git pull`. Only add these to `.env` when you intentionally need
 a server-local override:
 
 ```text
-GEMINI_MODEL=gemini-3.5-flash
+GEMINI_MODEL=gemini-3.8-flash
 GEMINI_FALLBACK_MODELS=gemini-2.5-flash
 GEMINI_TEMPERATURE=0.35
 GEMINI_MAX_OUTPUT_TOKENS=8192
@@ -35,9 +35,10 @@ GEMINI_MAX_RETRIES=2
 GEMINI_THINKGLEVEL=medium
 ```
 
-`GEMINI_THINKGLEVEL` supports `minimal`, `low`, `medium`, or `high`; leave it
-blank to omit `thinkingConfig`. The previous `GEMINI_THINKING_LEVEL` name is
-still accepted for backward compatibility.
+Gemini 3.8 Flash supports `low`, `medium`, or `high`; `minimal` is not
+supported. Leave `GEMINI_THINKGLEVEL` blank to omit `thinkingConfig`. The
+previous `GEMINI_THINKING_LEVEL` name is still accepted for backward
+compatibility.
 `GEMINI_FALLBACK_MODELS` is a comma-separated fallback list used when the
 primary model returns 404 or keeps failing with 429/5xx errors.
 
