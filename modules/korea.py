@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
 import pandas as pd
 
 from modules.formatting import format_prompt_dataframe
@@ -15,6 +18,23 @@ from naver_scraper import (
 
 
 INVESTORS = {"개인": "개인", "기관": "기관", "외인": "외국인"}
+KOREA_NEWS_TERMS = [
+    "코스피", "코스닥", "한국 증시", "국내 증시", "서울 증시", "외국인",
+    "원달러", "원/달러", "원화", "한국은행", "삼성전자", "sk하이닉스",
+    "반도체", "자동차", "조선", "방산", "바이오", "연준", "fomc",
+    "미중", "관세", "유가", "금값", "s&p", "나스닥",
+]
+KOREA_PREFERRED_SOURCES = [
+    "연합뉴스", "한국경제", "한국경제신문", "한국경제TV", "매일경제",
+    "매일경제 마켓", "서울경제", "서울경제신문", "이데일리", "머니투데이",
+    "조선비즈", "Chosunbiz", "뉴스1", "아시아경제", "파이낸셜뉴스",
+    "헤럴드경제", "뉴스핌", "한겨레", "중앙일보", "동아일보",
+    "Reuters", "Bloomberg",
+]
+KOREA_INTRADAY_TERMS = [
+    "개장시황", "장중시황", "장중수급포착", "오전시황", "오후시황",
+    "주식 초고수", "개장", "장중",
+]
 
 
 def _has_market_flow(investor: dict) -> bool:
@@ -154,6 +174,40 @@ def _target_investor_date(investor: dict) -> str:
     return ""
 
 
+def _korea_market_date(report_date: str | None, investor: dict) -> str:
+    from news_scraper import normalize_report_date
+
+    explicit = normalize_report_date(report_date)
+    if explicit:
+        return explicit
+    investor_date = _target_investor_date(investor)
+    if len(investor_date) == 8 and investor_date.isdigit():
+        return datetime.strptime(investor_date, "%Y%m%d").date().isoformat()
+    target = datetime.now(ZoneInfo("Asia/Seoul")).date()
+    while target.weekday() >= 5:
+        target -= timedelta(days=1)
+    return target.isoformat()
+
+
+def _market_direction(indicators: pd.DataFrame) -> int:
+    if not isinstance(indicators, pd.DataFrame) or indicators.empty:
+        return 0
+    changes = []
+    for _, row in indicators.iterrows():
+        name = str(row.get("종목명", ""))
+        if any(keyword in name for keyword in ["코스피", "코스닥"]):
+            change = pd.to_numeric(
+                str(row.get("등락률(%)", row.get("등락률", "")))
+                .replace(",", "")
+                .replace("%", "")
+                .replace("+", ""),
+                errors="coerce",
+            )
+            if pd.notna(change) and change != 0:
+                changes.append(1 if change > 0 else -1)
+    return changes[0] if changes and len(set(changes)) == 1 else 0
+
+
 def _date_aligned(df: pd.DataFrame, target_date: str) -> pd.DataFrame:
     if not isinstance(df, pd.DataFrame) or df.empty:
         return pd.DataFrame()
@@ -248,9 +302,36 @@ def collect(
 
     if include_news:
         try:
-            from news_scraper import collect_all_news
+            from news_scraper import collect_all_news, generate_news_context, select_market_news
 
-            data["news"] = collect_all_news(report_date)
+            data["market_date"] = _korea_market_date(report_date, data["investor"])
+            raw_news = collect_all_news(data["market_date"])
+            selected = {}
+            seen = set()
+            remaining = 14
+            for topic, articles in (raw_news.get("topics") or {}).items():
+                chosen = select_market_news(
+                    articles,
+                    KOREA_NEWS_TERMS,
+                    KOREA_PREFERRED_SOURCES,
+                    data["market_date"],
+                    direction=_market_direction(data["global_indicators"])
+                    if topic == "시장_종합" else 0,
+                    excluded_terms=KOREA_INTRADAY_TERMS,
+                    limit=min(3, remaining),
+                    allow_close_fallback=False,
+                )
+                selected[topic] = []
+                for article in chosen:
+                    title = article.get("title", "").casefold()
+                    if title not in seen and remaining > 0:
+                        selected[topic].append(article)
+                        seen.add(title)
+                        remaining -= 1
+            data["news"] = {
+                "topics": selected,
+                "context": generate_news_context(selected),
+            }
         except Exception as exc:
             data["news_error"] = str(exc)
 
@@ -295,26 +376,22 @@ def summarize_for_prompt(data: dict, max_rows: int = 12) -> str:
             lines.append(f"\n<investor:{key}>\n{compact.head(5).to_string(index=False)}")
 
     news = data.get("news") or {}
-    for section in ["naver_market", "naver_world", "naver_stock"]:
-        articles = news.get(section) or []
-        if articles:
-            lines.append(f"\n<news:{section}>")
-            for article in articles[:8]:
-                source = article.get("source", "")
-                published = article.get("published_date", "")
-                metadata = ", ".join(value for value in [published, source] if value)
-                suffix = f" [{metadata}]" if metadata else ""
-                lines.append(f"- {article.get('title', '')}{suffix}")
-
     topics = news.get("topics") or {}
-    for topic, articles in list(topics.items())[:8]:
+    emitted = False
+    for topic, articles in topics.items():
         if not articles:
             continue
         lines.append(f"\n<topic:{topic}>")
         for article in articles[:4]:
+            source = article.get("source", "")
             published = article.get("published_date", "")
-            suffix = f" [{published}]" if published else ""
+            metadata = ", ".join(value for value in [published, source] if value)
+            suffix = f" [{metadata}]" if metadata else ""
             lines.append(f"- {article.get('title', '')}{suffix}")
+            emitted = True
+
+    if not emitted:
+        lines.append("\n<news_evidence:한국> 없음 - 검증된 당일 주요 매체 기사 없이 가격·수급 데이터만 사용")
 
     for err_key in ["news_error"]:
         if data.get(err_key):

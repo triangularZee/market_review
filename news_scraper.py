@@ -109,6 +109,106 @@ def _dated_news_query(query: str, report_date: str | None = None) -> str:
     return f"({query}) after:{start} before:{end}"
 
 
+UP_HEADLINE_TERMS = (
+    " higher", " rise", " rises", " gain", " gains", " rally", " rallies",
+    " jump", " jumps", " advance", " advances", " surge", " surges",
+    " rebound", "상승", "강세", "급등", "반등",
+)
+DOWN_HEADLINE_TERMS = (
+    " lower", " fall", " falls", " drop", " drops", " decline", " declines",
+    " slide", " slides", " slump", " slumps", " selloff", " selling weighs",
+    "하락", "약세", "급락", "조정",
+)
+LOW_SIGNAL_NEWS_TERMS = (
+    "stock price", "chart & price", "quote & news", "better stock buy",
+    "prediction", "what to expect", "tomorrow", "midday", "early session",
+    "market opens", "opens higher", "opens lower", "stock futures",
+    "premarket", "pre-market", "how to invest",
+    "best stocks", "stocks to buy", "전망은", "목표주가",
+)
+CLOSE_REPORT_TERMS = (
+    " at close", " close higher", " close lower", " closes higher",
+    " closes lower", " end higher", " end lower", " ends higher",
+    " ends lower", "stocks end", "shares end", "wall street ends",
+    "마감", "장 마감", "증시 마감",
+)
+
+
+def normalize_report_date(report_date: str | None) -> str:
+    target = _parse_report_date(report_date)
+    return target.date().isoformat() if target else ""
+
+
+def headline_direction(title: str) -> int:
+    text = f" {str(title).casefold()}"
+    up = any(term in text for term in UP_HEADLINE_TERMS)
+    down = any(term in text for term in DOWN_HEADLINE_TERMS)
+    if up == down:
+        return 0
+    return 1 if up else -1
+
+
+def is_market_close_article(article: dict) -> bool:
+    title = f" {str(article.get('title', '')).casefold()}"
+    return any(term in title for term in CLOSE_REPORT_TERMS)
+
+
+def select_market_news(
+    articles: list[dict],
+    relevance_terms: list[str],
+    preferred_sources: list[str],
+    market_date: str,
+    direction: int = 0,
+    excluded_terms: list[str] | None = None,
+    limit: int = 5,
+    allow_close_fallback: bool = True,
+) -> list[dict]:
+    """Select same-day, reputable headlines that agree with observed market data."""
+    relevance = [term.casefold() for term in relevance_terms]
+    preferred = [source.casefold() for source in preferred_sources]
+    excluded = [term.casefold() for term in (excluded_terms or [])]
+    ranked = []
+    seen = set()
+
+    for article in articles:
+        title = str(article.get("title", "")).strip()
+        source = str(article.get("source", "")).strip()
+        published = str(article.get("published_date", "")).strip()
+        folded = title.casefold()
+        identity = re.sub(r"\s+", " ", folded)
+        if not title or identity in seen:
+            continue
+        seen.add(identity)
+        if market_date and published != market_date:
+            continue
+        if any(term in folded for term in LOW_SIGNAL_NEWS_TERMS):
+            continue
+        headline_only = title.rsplit(" - ", 1)[0].strip()
+        if re.fullmatch(r".{2,40}\(\d{6}\)", headline_only):
+            continue
+        if excluded and any(term in folded for term in excluded):
+            continue
+        if relevance and not any(term in folded for term in relevance):
+            continue
+        article_direction = headline_direction(title)
+        if direction and article_direction and article_direction != direction:
+            continue
+
+        source_name = re.sub(r"\s+", " ", source.casefold()).strip()
+        source_is_preferred = any(
+            source_name == term or source_name == f"{term}.com"
+            for term in preferred
+        )
+        is_close = is_market_close_article(article)
+        if not source_is_preferred and not (allow_close_fallback and is_close):
+            continue
+        score = (4 if source_is_preferred else 0) + (3 if is_close else 0)
+        ranked.append((score, article))
+
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    return [article for _, article in ranked[:limit]]
+
+
 def fetch_google_news_rss(
     query: str,
     num: int = 10,
@@ -269,7 +369,7 @@ def collect_all_news(report_date: str | None = None) -> dict:
 
     # 주제별 배경 뉴스 (Google News RSS)
     print("  주제별 배경 뉴스 수집 중...")
-    result["topics"] = fetch_all_topic_news(report_date=report_date)
+    result["topics"] = fetch_all_topic_news(report_date=report_date, num=16)
 
     # 컨텍스트 생성
     print("  배경 컨텍스트 생성 중...")

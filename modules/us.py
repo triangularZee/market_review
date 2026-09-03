@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
 import pandas as pd
 
 from global_market_analyzer import fetch_market_top_stocks
@@ -11,21 +14,35 @@ from us_market_analyzer import fetch_us_etf_top
 
 
 US_NEWS_TOPICS = {
-    "US_market": '("US stocks" OR "S&P 500" OR Nasdaq OR Dow) (close OR rises OR falls)',
-    "AI_semis": '(Nvidia OR AMD OR Micron OR Broadcom) (stocks OR earnings OR guidance)',
-    "mega_tech": '(Apple OR Microsoft OR Amazon OR Alphabet OR Meta) (stocks OR earnings OR guidance)',
-    "rates_macro": '("US stocks" OR "S&P 500") (Federal Reserve OR Treasury OR dollar)',
-    "energy": '("US energy stocks" OR Exxon OR Chevron) (oil OR OPEC OR earnings)',
-    "healthcare": '("US healthcare stocks" OR biotech OR pharma) (FDA OR earnings)',
-    "consumer": '("US consumer stocks" OR retail OR restaurants OR travel) earnings',
+    "US_market": "US stocks Wall Street Reuters",
+    "US_market_bloomberg": "S&P 500 Nasdaq Bloomberg",
+    "AI_semis": "Nvidia AMD semiconductor stocks Reuters",
+    "mega_tech": "Apple Microsoft Amazon Alphabet Meta stocks Reuters",
+    "rates_macro": "US stocks Federal Reserve Treasury yields Reuters",
+    "energy": "US energy stocks oil Reuters",
+    "healthcare": "US healthcare stocks Reuters",
+    "consumer": "US consumer stocks earnings Reuters",
 }
 
 
 US_INDEX_KEYWORDS = ["S&P 500", "나스닥", "다우존스", "VIX"]
+US_NEWS_TERMS = [
+    "us stocks", "u.s. stocks", "wall street", "wall st", "s&p 500", "nasdaq", "dow",
+    "federal reserve", "treasury", "nvidia", "amd", "semiconductor",
+    "apple", "microsoft", "amazon", "alphabet", "meta", "energy stocks",
+    "healthcare stocks", "consumer stocks",
+]
+US_PREFERRED_SOURCES = [
+    "Reuters", "Bloomberg", "Financial Times", "The Wall Street Journal",
+    "CNBC", "MarketWatch", "Barron's", "Associated Press", "AP News",
+]
 
 
 def _to_numeric(value) -> float:
-    return pd.to_numeric(str(value).replace(",", ""), errors="coerce")
+    return pd.to_numeric(
+        str(value).replace(",", "").replace("%", "").replace("+", ""),
+        errors="coerce",
+    )
 
 
 def _format_change(value) -> str:
@@ -65,18 +82,61 @@ def _index_line(indicators: pd.DataFrame) -> str:
     return f"- 주요 지수: {' | '.join(rows)}"
 
 
-def _collect_news(report_date: str | None = None) -> dict:
-    from news_scraper import fetch_all_topic_news, generate_news_context
+def _us_market_date(report_date: str | None = None) -> str:
+    from news_scraper import normalize_report_date
+
+    explicit = normalize_report_date(report_date)
+    if explicit:
+        return explicit
+    target = datetime.now(ZoneInfo("America/New_York")).date()
+    while target.weekday() >= 5:
+        target -= timedelta(days=1)
+    return target.isoformat()
+
+
+def _market_direction(indicators: pd.DataFrame) -> int:
+    if not isinstance(indicators, pd.DataFrame) or indicators.empty:
+        return 0
+    changes = []
+    for _, row in indicators.iterrows():
+        name = str(row.get("종목명", ""))
+        if any(keyword in name for keyword in ["S&P 500", "나스닥", "다우존스"]):
+            change = _to_numeric(row.get("등락률(%)", row.get("등락률", "")))
+            if pd.notna(change) and change != 0:
+                changes.append(1 if change > 0 else -1)
+    return changes[0] if changes and len(set(changes)) == 1 else 0
+
+
+def _collect_news(report_date: str, direction: int = 0) -> dict:
+    from news_scraper import fetch_all_topic_news, generate_news_context, select_market_news
 
     topics = fetch_all_topic_news(
         US_NEWS_TOPICS,
         report_date,
         locale="en-US",
-        num=16,
+        num=20,
     )
+    selected = {}
+    seen = set()
+    for topic, articles in topics.items():
+        chosen = select_market_news(
+            articles,
+            US_NEWS_TERMS,
+            US_PREFERRED_SOURCES,
+            report_date,
+            direction=direction if topic.startswith("US_market") else 0,
+            limit=4,
+            allow_close_fallback=False,
+        )
+        selected[topic] = []
+        for article in chosen:
+            title = article.get("title", "").casefold()
+            if title not in seen:
+                selected[topic].append(article)
+                seen.add(title)
     return {
-        "topics": topics,
-        "context": generate_news_context(topics),
+        "topics": selected,
+        "context": generate_news_context(selected),
     }
 
 
@@ -95,9 +155,13 @@ def collect(
         "etf": fetch_us_etf_top("priceTop", 100),
         "news": {},
     }
+    data["market_date"] = _us_market_date(report_date)
     if include_news:
         try:
-            data["news"] = _collect_news(report_date)
+            data["news"] = _collect_news(
+                data["market_date"],
+                _market_direction(data["global_indicators"]),
+            )
         except Exception as exc:
             data["news_error"] = str(exc)
     return data
@@ -149,6 +213,7 @@ def summarize_for_prompt(data: dict, max_rows: int = 18) -> str:
         lines.append("\n<top_value_stocks:US>\n" + "\n".join(top_value_lines))
 
     news = data.get("news") or {}
+    emitted = False
     for topic, articles in list((news.get("topics") or {}).items())[:8]:
         if not articles:
             continue
@@ -159,6 +224,10 @@ def summarize_for_prompt(data: dict, max_rows: int = 18) -> str:
             metadata = ", ".join(value for value in [published, source] if value)
             suffix = f" [{metadata}]" if metadata else ""
             lines.append(f"- {article.get('title', '')}{suffix}")
+            emitted = True
+
+    if not emitted:
+        lines.append("\n<news_evidence:미국> 없음 - 검증된 당일 주요 매체 기사 없이 가격 데이터만 사용")
 
     if data.get("news_error"):
         lines.append(f"\n<news_error> {data['news_error']}")

@@ -10,7 +10,9 @@ import env_loader
 import gemini_reporter
 from global_market_analyzer import _signed_taiwan_change, _valid_taiwan_ranking
 from gemini_reporter import _clean_response, _format_report_date
-from news_scraper import _dated_news_query
+from news_scraper import _dated_news_query, select_market_news
+from modules.korea import _korea_market_date
+from modules.us import _us_market_date
 from modules.other import _is_close_report, _news_matches_market, _rank_country_news
 from modules.other import summarize_for_prompt as summarize_other
 from telegram_sender import split_telegram
@@ -166,6 +168,77 @@ Let's structure the output exactly as requested.
             _dated_news_query("Taiwan stocks", "2026-08-28"),
             "(Taiwan stocks) after:2026-08-27 before:2026-08-29",
         )
+
+    def test_common_news_selector_requires_same_day(self):
+        articles = [
+            {
+                "title": "Wall Street ends higher as chip shares rally",
+                "source": "Reuters",
+                "published_date": "2026-09-02",
+            },
+            {
+                "title": "Wall Street ends lower as chip shares slide",
+                "source": "Reuters",
+                "published_date": "2026-09-03",
+            },
+        ]
+
+        selected = select_market_news(
+            articles,
+            ["wall street"],
+            ["Reuters"],
+            "2026-09-03",
+            direction=-1,
+        )
+
+        self.assertEqual(len(selected), 1)
+        self.assertIn("ends lower", selected[0]["title"])
+
+    def test_common_news_selector_rejects_untrusted_background_story(self):
+        selected = select_market_news(
+            [{
+                "title": "Semiconductor stocks face a complicated outlook",
+                "source": "Example Blog",
+                "published_date": "2026-09-03",
+            }],
+            ["semiconductor"],
+            ["Reuters"],
+            "2026-09-03",
+        )
+
+        self.assertEqual(selected, [])
+
+    def test_common_news_selector_does_not_partially_match_source(self):
+        selected = select_market_news(
+            [{
+                "title": "Wall Street gains as yields ease",
+                "source": "CNBC TV18",
+                "published_date": "2026-09-03",
+            }],
+            ["wall street"],
+            ["CNBC"],
+            "2026-09-03",
+        )
+
+        self.assertEqual(selected, [])
+
+    def test_common_news_selector_rejects_bare_stock_quote(self):
+        selected = select_market_news(
+            [{
+                "title": "SK하이닉스(000660) - 매일경제 마켓",
+                "source": "매일경제 마켓",
+                "published_date": "2026-09-03",
+            }],
+            ["sk하이닉스"],
+            ["매일경제 마켓"],
+            "2026-09-03",
+        )
+
+        self.assertEqual(selected, [])
+
+    def test_explicit_market_dates_are_normalized(self):
+        self.assertEqual(_us_market_date("20260903"), "2026-09-03")
+        self.assertEqual(_korea_market_date("26.09.03", {}), "2026-09-03")
 
     def test_market_news_rejects_opposite_direction(self):
         terms = ["taiwan", "taiex"]
