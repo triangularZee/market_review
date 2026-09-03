@@ -13,7 +13,12 @@ from gemini_reporter import _clean_response, _format_report_date
 from news_scraper import _dated_news_query, select_market_news
 from modules.korea import _korea_market_date
 from modules.us import _us_market_date
-from modules.other import _is_close_report, _news_matches_market, _rank_country_news
+from modules.other import (
+    _intraday_index_facts,
+    _is_close_report,
+    _news_matches_market,
+    _rank_country_news,
+)
 from modules.other import summarize_for_prompt as summarize_other
 from telegram_sender import split_telegram
 
@@ -309,6 +314,27 @@ Let's structure the output exactly as requested.
         ranked = _rank_country_news(articles, "대만", "2026-09-03")
 
         self.assertEqual(ranked[0]["source"], "Reuters")
+
+    def test_intraday_facts_use_ohlc_without_inventing_timestamps(self):
+        import pandas as pd
+
+        indicators = pd.DataFrame([{
+            "종목명": "상해종합",
+            "코드": ".SSEC",
+            "전일종가": "4,000.00",
+            "시가": "4,020.00",
+            "고가": "4,040.00",
+            "저가": "3,920.00",
+            "현재가": "4,000.00",
+        }])
+
+        facts = _intraday_index_facts("중국", indicators)
+
+        self.assertEqual(len(facts), 1)
+        self.assertIn("시가 4,020.00(+0.50%)", facts[0])
+        self.assertIn("장중 저가 3,920.00(-2.00%)", facts[0])
+        self.assertIn("저점 대비 종가 +2.04%", facts[0])
+        self.assertNotIn("오전", facts[0])
 
     def test_close_report_does_not_match_business_closure(self):
         self.assertFalse(

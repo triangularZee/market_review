@@ -344,6 +344,46 @@ def _country_index_line(country: str, indicators: pd.DataFrame, taiex: dict | No
     return f"- 주요 지수: {' | '.join(rows)}"
 
 
+def _intraday_index_facts(country: str, indicators: pd.DataFrame) -> list[str]:
+    """Build OHLC-derived facts without inferring an unsupported event sequence."""
+    if not isinstance(indicators, pd.DataFrame) or indicators.empty:
+        return []
+    required = {"종목명", "현재가", "전일종가", "시가", "고가", "저가"}
+    if not required.issubset(indicators.columns):
+        return []
+
+    facts = []
+    keywords = COUNTRY_INDEX_KEYWORDS.get(country, [])
+    for _, row in indicators.iterrows():
+        name = str(row.get("종목명", ""))
+        code = str(row.get("코드", ""))
+        if not any(keyword in name or keyword in code for keyword in keywords):
+            continue
+        previous = _to_numeric(row.get("전일종가"))
+        opened = _to_numeric(row.get("시가"))
+        high = _to_numeric(row.get("고가"))
+        low = _to_numeric(row.get("저가"))
+        close = _to_numeric(row.get("현재가"))
+        if any(pd.isna(value) or value <= 0 for value in [previous, opened, high, low, close]):
+            continue
+
+        open_gap = (opened / previous - 1) * 100
+        low_change = (low / previous - 1) * 100
+        high_change = (high / previous - 1) * 100
+        close_change = (close / previous - 1) * 100
+        rebound = (close / low - 1) * 100
+        range_pct = (high / low - 1) * 100
+        facts.append(
+            f"- {name}: 전일종가 {_format_level(previous)} → 시가 {_format_level(opened)}"
+            f"({_format_change(open_gap)}) → 장중 저가 {_format_level(low)}"
+            f"({_format_change(low_change)}) / 고가 {_format_level(high)}"
+            f"({_format_change(high_change)}) → 종가 {_format_level(close)}"
+            f"({_format_change(close_change)}); 저점 대비 종가 {_format_change(rebound)}, "
+            f"일중 변동폭 {range_pct:.2f}%"
+        )
+    return facts
+
+
 def _collect_news(report_date: str | None = None) -> dict:
     from news_scraper import fetch_all_topic_news, generate_news_context
 
@@ -420,6 +460,11 @@ def summarize_for_prompt(data: dict, max_rows: int = 18) -> str:
         index_line = _country_index_line(country, indicators, country_taiex)
         if index_line:
             lines.append(f"\n<country_indices:{country}>\n{index_line}")
+        intraday_facts = _intraday_index_facts(country, indicators)
+        if intraday_facts:
+            lines.append(
+                f"\n<intraday_index_facts:{country}>\n" + "\n".join(intraday_facts)
+            )
 
         if country == "중국":
             top_value_lines = []
