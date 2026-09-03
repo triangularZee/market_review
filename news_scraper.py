@@ -175,6 +175,7 @@ def fetch_all_topic_news(
     topics: dict | None = None,
     report_date: str | None = None,
     locale: str = "ko-KR",
+    num: int = 8,
 ) -> dict[str, list[dict]]:
     """모든 주제에 대해 뉴스를 수집"""
     if topics is None:
@@ -185,7 +186,7 @@ def fetch_all_topic_news(
         print(f"  뉴스 수집: [{key}] {query}...")
         articles = fetch_google_news_rss(
             query,
-            num=8,
+            num=num,
             report_date=report_date,
             locale=locale,
         )

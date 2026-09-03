@@ -11,7 +11,7 @@ import gemini_reporter
 from global_market_analyzer import _signed_taiwan_change, _valid_taiwan_ranking
 from gemini_reporter import _clean_response, _format_report_date
 from news_scraper import _dated_news_query
-from modules.other import _news_matches_market
+from modules.other import _is_close_report, _news_matches_market, _rank_country_news
 from modules.other import summarize_for_prompt as summarize_other
 from telegram_sender import split_telegram
 
@@ -188,6 +188,28 @@ Let's structure the output exactly as requested.
             )
         )
 
+    def test_market_news_rejects_mismatched_taiex_change(self):
+        self.assertFalse(
+            _news_matches_market(
+                "Taiwan Stocks Decline as TAIEX Slips 1.57% at Close",
+                ["taiwan", "taiex"],
+                -1,
+                published_date="2026-09-03",
+                market_date="2026-09-03",
+                market_change_pct=-0.67,
+            )
+        )
+
+    def test_market_news_rejects_cross_country_headline(self):
+        self.assertFalse(
+            _news_matches_market(
+                "Mainland Chinese investors buy Hong Kong AI stocks",
+                ["china", "chinese"],
+                0,
+                excluded_terms=["hong kong", "hang seng"],
+            )
+        )
+
     def test_other_context_marks_missing_news_evidence(self):
         import pandas as pd
 
@@ -196,6 +218,32 @@ Let's structure the output exactly as requested.
         )
 
         self.assertIn("<news_evidence:대만> 없음", context)
+
+    def test_country_news_prioritizes_major_same_day_source(self):
+        articles = [
+            {
+                "title": "Taiwan stocks fall at close",
+                "source": "Example Blog",
+                "published_date": "2026-09-03",
+            },
+            {
+                "title": "TSMC weakness weighs on Taiwan shares at close",
+                "source": "Reuters",
+                "published_date": "2026-09-03",
+            },
+        ]
+
+        ranked = _rank_country_news(articles, "대만", "2026-09-03")
+
+        self.assertEqual(ranked[0]["source"], "Reuters")
+
+    def test_close_report_does_not_match_business_closure(self):
+        self.assertFalse(
+            _is_close_report({"title": "China's biggest lithium mine closes again"})
+        )
+        self.assertTrue(
+            _is_close_report({"title": "China stocks end flat after mixed session"})
+        )
 
 
 if __name__ == "__main__":

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+import re
+
 import pandas as pd
 
 from global_market_analyzer import fetch_all_global_markets
@@ -10,14 +13,14 @@ from modules.formatting import format_index_item, format_prompt_dataframe
 
 
 OTHER_NEWS_TOPICS = {
-    "china_market": '("China stocks" OR "A shares" OR CSI300) (close OR rises OR falls)',
-    "china_drivers": '("China stocks" OR "A shares") (PBOC OR yuan OR property OR technology)',
-    "hongkong_market": '("Hong Kong stocks" OR "Hang Seng") (close OR rises OR falls)',
-    "hongkong_drivers": '("Hong Kong stocks" OR "Hang Seng") (yuan OR property OR technology)',
-    "japan_market": '(Nikkei OR TOPIX OR "Japan stocks") (close OR rises OR falls)',
-    "japan_drivers": '(Nikkei OR "Japan stocks") (BOJ OR yen OR exporters OR semiconductor)',
-    "taiwan_market": '(TAIEX OR "Taiwan stocks") (close OR rises OR falls)',
-    "taiwan_drivers": '(TAIEX OR "Taiwan stocks") (TSMC OR MediaTek OR semiconductor OR "foreign investors")',
+    "china_market": "China stocks",
+    "china_drivers": "China economy PBOC yuan property",
+    "hongkong_market": "Hang Seng",
+    "hongkong_drivers": "Hong Kong stocks",
+    "japan_market": "Nikkei",
+    "japan_drivers": "Japan stocks yen BOJ",
+    "taiwan_market": "TAIEX",
+    "taiwan_drivers": "Taiwan stocks TSMC",
 }
 
 COUNTRY_MARKETS = {
@@ -41,8 +44,36 @@ COUNTRY_NEWS_TERMS = {
     "대만": ["taiwan", "taiwanese", "taiex", "tsmc", "mediatek", "대만", "타이완", "台灣", "台積電"],
 }
 
-UP_HEADLINE_TERMS = (" higher", " rise", " rises", " gain", " gains", " rally", " rallies", " jump", " jumps", "상승", "강세", "급등")
-DOWN_HEADLINE_TERMS = (" lower", " fall", " falls", " drop", " drops", " decline", " declines", " slide", " slides", "하락", "약세", "급락")
+COUNTRY_NEWS_EXCLUDE_TERMS = {
+    "중국": ["hong kong", "hang seng", "japan", "nikkei", "taiwan", "taiex"],
+    "홍콩": ["japan", "nikkei", "taiwan", "taiex"],
+    "일본": ["china stocks", "shanghai", "shenzhen", "hang seng", "taiwan", "taiex"],
+    "대만": ["china stocks", "shanghai", "shenzhen", "hang seng", "japan stocks", "nikkei"],
+}
+
+COUNTRY_PREFERRED_SOURCES = {
+    "중국": [
+        "Reuters", "Bloomberg", "Financial Times", "The Wall Street Journal",
+        "CNBC", "South China Morning Post", "Caixin Global", "Nikkei Asia",
+        "Yicai Global",
+    ],
+    "홍콩": [
+        "Reuters", "Bloomberg", "Financial Times", "The Wall Street Journal",
+        "CNBC", "South China Morning Post", "Nikkei Asia",
+    ],
+    "일본": [
+        "Reuters", "Bloomberg", "Financial Times", "The Wall Street Journal",
+        "CNBC", "Nikkei Asia", "The Japan Times", "Kyodo News", "NHK WORLD-JAPAN",
+        "Mainichi", "毎日新聞",
+    ],
+    "대만": [
+        "Reuters", "Bloomberg", "Financial Times", "The Wall Street Journal",
+        "CNBC", "Nikkei Asia", "Focus Taiwan", "Taipei Times", "Taiwan News",
+    ],
+}
+
+UP_HEADLINE_TERMS = (" higher", " rise", " rises", " gain", " gains", " rally", " rallies", " jump", " jumps", " advance", " advances", " surge", " surges", " rebound", "상승", "강세", "급등")
+DOWN_HEADLINE_TERMS = (" lower", " fall", " falls", " drop", " drops", " decline", " declines", " slide", " slides", " slump", " slumps", " selloff", " selling weighs", "하락", "약세", "급락")
 LOW_SIGNAL_NEWS_TERMS = (
     "stock price",
     "chart & price",
@@ -173,16 +204,87 @@ def _news_matches_market(
     direction: int,
     published_date: str = "",
     market_date: str = "",
+    market_change_pct: float | None = None,
+    excluded_terms: list[str] | None = None,
 ) -> bool:
     text = str(title).casefold()
     if market_date and published_date and published_date != market_date:
         return False
     if any(term in text for term in LOW_SIGNAL_NEWS_TERMS):
         return False
+    if any(term in text for term in (excluded_terms or [])):
+        return False
     if not any(term in text for term in relevance_terms):
         return False
     headline_direction = _headline_direction(text)
-    return direction == 0 or headline_direction == 0 or headline_direction == direction
+    if direction != 0 and headline_direction != 0 and headline_direction != direction:
+        return False
+    if market_change_pct is not None and "taiex" in text:
+        headline_percentages = [
+            float(value)
+            for value in re.findall(r"(\d+(?:\.\d+)?)\s*%", text)
+        ]
+        if headline_percentages and all(
+            abs(value - abs(market_change_pct)) > 0.35
+            for value in headline_percentages
+        ):
+            return False
+    return True
+
+
+def _preferred_news_source(article: dict, country: str) -> bool:
+    source = str(article.get("source", "")).casefold()
+    return any(
+        preferred.casefold() in source
+        for preferred in COUNTRY_PREFERRED_SOURCES.get(country, [])
+    )
+
+
+def _is_close_report(article: dict) -> bool:
+    title = str(article.get("title", "")).casefold()
+    patterns = (
+        r"\bstocks?\s+(?:end|ends|ended|close|closes|closed)\b",
+        r"\b(?:market|index|taiex|nikkei|hang seng|csi ?300)\b.*\b(?:end|ends|close|closes|closed)\b",
+        r"\bat (?:the )?close\b",
+    )
+    return "마감" in title or any(re.search(pattern, title) for pattern in patterns)
+
+
+def _rank_country_news(
+    articles: list[dict],
+    country: str,
+    market_date: str = "",
+) -> list[dict]:
+    def sort_key(article: dict) -> tuple[int, int, int]:
+        published = str(article.get("published_date", ""))
+        exact_date = bool(market_date and published == market_date)
+        preferred_source = _preferred_news_source(article, country)
+        close_report = _is_close_report(article)
+        return (not exact_date, not preferred_source, not close_report)
+
+    return sorted(articles, key=sort_key)
+
+
+def _normalize_report_date(report_date: str | None) -> str:
+    if not report_date:
+        return ""
+    for fmt in ("%Y-%m-%d", "%Y%m%d", "%y.%m.%d"):
+        try:
+            return datetime.strptime(report_date.strip(), fmt).date().isoformat()
+        except ValueError:
+            continue
+    return ""
+
+
+def _asia_market_date(markets: dict, report_date: str | None = None) -> str:
+    requested = _normalize_report_date(report_date)
+    if requested:
+        return requested
+    taiwan = markets.get("대만")
+    if isinstance(taiwan, pd.DataFrame):
+        taiex = getattr(taiwan, "attrs", {}).get("taiex") or {}
+        return str(taiex.get("date", ""))
+    return ""
 
 
 def _top_value_line(frames: list[pd.DataFrame], count: int = 10) -> str:
@@ -245,7 +347,12 @@ def _country_index_line(country: str, indicators: pd.DataFrame, taiex: dict | No
 def _collect_news(report_date: str | None = None) -> dict:
     from news_scraper import fetch_all_topic_news, generate_news_context
 
-    topics = fetch_all_topic_news(OTHER_NEWS_TOPICS, report_date, locale="en-US")
+    topics = fetch_all_topic_news(
+        OTHER_NEWS_TOPICS,
+        report_date,
+        locale="en-US",
+        num=20,
+    )
     return {
         "topics": topics,
         "context": generate_news_context(topics),
@@ -257,16 +364,19 @@ def collect(
     global_indicators: pd.DataFrame | None = None,
     report_date: str | None = None,
 ) -> dict:
+    markets = fetch_all_global_markets()
+    market_date = _asia_market_date(markets, report_date)
     data = {
         "global_indicators": global_indicators
         if global_indicators is not None
         else fetch_global_indicators(),
-        "markets": fetch_all_global_markets(),
+        "markets": markets,
+        "market_date": market_date,
         "news": {},
     }
     if include_news:
         try:
-            data["news"] = _collect_news(report_date)
+            data["news"] = _collect_news(market_date or report_date)
         except Exception as exc:
             data["news_error"] = str(exc)
     return data
@@ -337,9 +447,15 @@ def summarize_for_prompt(data: dict, max_rows: int = 18) -> str:
                 if len(display_name) >= 3:
                     relevance_terms.append(display_name.casefold())
         market_direction = _country_direction(country, indicators, country_taiex)
-        market_date = str((country_taiex or {}).get("date", ""))
+        market_date = str((country_taiex or {}).get("date") or data.get("market_date", ""))
+        market_change_pct = None
+        if country == "대만" and country_taiex:
+            parsed_change = _to_numeric(country_taiex.get("change_pct", ""))
+            if pd.notna(parsed_change):
+                market_change_pct = float(parsed_change)
 
         has_relevant_news = False
+        seen_news_titles = set()
         for topic in COUNTRY_NEWS.get(country, []):
             articles = topics.get(topic) or []
             relevant_articles = [
@@ -351,10 +467,31 @@ def summarize_for_prompt(data: dict, max_rows: int = 18) -> str:
                     market_direction,
                     article.get("published_date", ""),
                     market_date,
+                    market_change_pct,
+                    COUNTRY_NEWS_EXCLUDE_TERMS.get(country, []),
                 )
+            ]
+            relevant_articles = [
+                article
+                for article in relevant_articles
+                if _preferred_news_source(article, country) or _is_close_report(article)
             ]
             if not relevant_articles:
                 continue
+            relevant_articles = _rank_country_news(
+                relevant_articles,
+                country,
+                market_date,
+            )
+            relevant_articles = [
+                article
+                for article in relevant_articles
+                if str(article.get("title", "")).casefold() not in seen_news_titles
+            ]
+            if not relevant_articles:
+                continue
+            for article in relevant_articles[:4]:
+                seen_news_titles.add(str(article.get("title", "")).casefold())
             has_relevant_news = True
             lines.append(f"\n<news:{country}:{topic}>")
             for article in relevant_articles[:4]:

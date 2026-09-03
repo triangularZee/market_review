@@ -68,7 +68,12 @@ def _index_line(indicators: pd.DataFrame) -> str:
 def _collect_news(report_date: str | None = None) -> dict:
     from news_scraper import fetch_all_topic_news, generate_news_context
 
-    topics = fetch_all_topic_news(US_NEWS_TOPICS, report_date, locale="en-US")
+    topics = fetch_all_topic_news(
+        US_NEWS_TOPICS,
+        report_date,
+        locale="en-US",
+        num=16,
+    )
     return {
         "topics": topics,
         "context": generate_news_context(topics),
