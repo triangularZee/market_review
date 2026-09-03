@@ -27,13 +27,8 @@ def fetch_global_indicators() -> pd.DataFrame:
             "종목명": item.get("stockName", ""),
             "코드": item.get("itemCode", ""),
             "현재가": item.get("currentPrice", ""),
-            "전일종가": item.get("lastClosePrice", ""),
-            "시가": item.get("openPrice", ""),
-            "고가": item.get("highPrice", ""),
-            "저가": item.get("lowPrice", ""),
             "전일대비": f'{fluct_sign} {item.get("fluctuations", "")}',
             "등락률(%)": item.get("fluctuationsRatio", ""),
-            "현지거래시각": item.get("localTradedAt", ""),
             "시장상태": item.get("marketStatus", ""),
             "분류": _classify_indicator(item),
         })
